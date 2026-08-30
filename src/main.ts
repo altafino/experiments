@@ -6,6 +6,7 @@ import { CommandBus } from './commands/CommandBus'
 import { KeyboardController } from './io/KeyboardController'
 import { commandBusKey } from './io/keys'
 import { useDeckStore } from './state/deck.store'
+import { useMixerStore } from './state/mixer.store'
 import { startUiSync } from './state/uiSync'
 import './style.css'
 
@@ -18,9 +19,15 @@ app.use(pinia)
 app.provide(commandBusKey, commandBus)
 
 const deckStore = useDeckStore(pinia)
-startUiSync(audioEngine, deckStore)
+const mixerStore = useMixerStore(pinia)
+startUiSync(audioEngine, deckStore, mixerStore)
 
-const keyboard = new KeyboardController(commandBus, audioEngine)
+const keyboard = new KeyboardController(commandBus, audioEngine, {
+  get: () => deckStore.focusedDeck,
+  set: (deck) => {
+    deckStore.focusDeck(deck)
+  },
+})
 keyboard.attach()
 
 app.mount('#app')

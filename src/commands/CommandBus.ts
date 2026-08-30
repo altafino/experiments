@@ -42,6 +42,30 @@ export class CommandBus {
         await this.engine.ensureStarted()
         this.engine.getDeck(command.deck).seek(command.position)
         return
+      case 'SET_TRIM':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setTrim(command.deck, command.value)
+        return
+      case 'SET_EQ':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setEq(command.deck, command.band, command.value)
+        return
+      case 'SET_CHANNEL_FADER':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setChannelFader(command.deck, command.value)
+        return
+      case 'SET_CROSSFADER':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setCrossfader(command.value)
+        return
+      case 'SET_CROSSFADER_CURVE':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setCrossfaderCurve(command.curve)
+        return
+      case 'SET_MASTER_GAIN':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setMasterGain(command.value)
+        return
       default: {
         const neverCommand: never = command
         throw new Error(`Unhandled DJ command: ${JSON.stringify(neverCommand)}`)

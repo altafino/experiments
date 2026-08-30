@@ -1,7 +1,8 @@
 import type { Clock } from '../AudioClock'
 import type { DeckController } from '../../commands/DJCommand'
 import type { DeckState } from '../../domain/DeckState'
-import type { Track } from '../../domain/Track'
+import type { AnalysisStatus, Track } from '../../domain/Track'
+import type { AnalysisResult } from '../../analysis/types'
 import { DeckTransport } from './DeckTransport'
 
 /**
@@ -18,6 +19,7 @@ export class DeckEngine implements DeckController {
   private track: Track | null = null
   private source: AudioBufferSourceNode | null = null
   private sourceGeneration = 0
+  private analysisStatus: AnalysisStatus = 'idle'
 
   constructor(deckId: 1 | 2, context: BaseAudioContext, clock: Clock) {
     this.deckId = deckId
@@ -36,6 +38,25 @@ export class DeckEngine implements DeckController {
     this.buffer = buffer
     this.track = track
     this.transport.reset(buffer.duration)
+    this.analysisStatus = track.waveform ? 'ready' : 'pending'
+  }
+
+  applyAnalysis(result: AnalysisResult): void {
+    if (!this.track) {
+      return
+    }
+    this.track = {
+      ...this.track,
+      bpm: result.bpm,
+      loudness: result.loudness,
+      waveform: result.waveform,
+      beatGrid: result.beatGrid,
+    }
+    this.analysisStatus = 'ready'
+  }
+
+  markAnalysisFailed(): void {
+    this.analysisStatus = 'failed'
   }
 
   play(): void {
@@ -78,6 +99,8 @@ export class DeckEngine implements DeckController {
       playing: this.transport.isPlaying(),
       positionSeconds: this.transport.getPosition(now),
       durationSeconds: this.transport.duration(),
+      originalBpm: track?.bpm,
+      effectiveBpm: track?.bpm,
       tempoPercent: 0,
       masterTempo: false,
       syncEnabled: false,
@@ -89,6 +112,7 @@ export class DeckEngine implements DeckController {
       slipEnabled: false,
       quantizeEnabled: false,
       waveformPeaks: track?.waveform?.peaks,
+      analysisStatus: this.analysisStatus,
     }
   }
 

@@ -1,3 +1,5 @@
+import type { AnalysisStatus } from './Track'
+
 export interface HotCue {
   id: 'A' | 'B' | 'C'
   positionSeconds: number
@@ -32,6 +34,7 @@ export interface DeckState {
   slipEnabled: boolean
   quantizeEnabled: boolean
   waveformPeaks?: Float32Array
+  analysisStatus: AnalysisStatus
 }
 
 export function emptyDeckState(deckId: 1 | 2): DeckState {
@@ -50,5 +53,6 @@ export function emptyDeckState(deckId: 1 | 2): DeckState {
     hotCues: [],
     slipEnabled: false,
     quantizeEnabled: false,
+    analysisStatus: 'idle',
   }
 }

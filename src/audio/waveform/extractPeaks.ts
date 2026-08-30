@@ -8,8 +8,7 @@ export const DEFAULT_PEAK_BUCKETS = 2048
 
 /**
  * Downsample decoded PCM into peak buckets for canvas rendering.
- * Analysis-quality BPM work belongs in a worker (Phase 5); this is
- * a one-shot visual extract after decode.
+ * Prefer calling this from analysis workers, not Vue.
  */
 export function extractPeaks(
   source: PeakSource,

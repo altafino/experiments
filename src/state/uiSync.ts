@@ -1,5 +1,6 @@
 import type { AudioEngine } from '../audio/AudioEngine'
 import type { useDeckStore } from './deck.store'
+import type { useMixerStore } from './mixer.store'
 
 /**
  * Copies engine snapshots into Pinia at display refresh rate.
@@ -7,7 +8,8 @@ import type { useDeckStore } from './deck.store'
  */
 export function startUiSync(
   engine: AudioEngine,
-  store: ReturnType<typeof useDeckStore>,
+  decks: ReturnType<typeof useDeckStore>,
+  mixer: ReturnType<typeof useMixerStore>,
 ): () => void {
   let frame = 0
   let stopped = false
@@ -16,9 +18,17 @@ export function startUiSync(
     if (stopped) {
       return
     }
-    const deck = engine.tryGetDeck(1)
-    if (deck) {
-      store.applySnapshot(deck.getSnapshot())
+    const deck1 = engine.tryGetDeck(1)
+    if (deck1) {
+      decks.applySnapshot(deck1.getSnapshot())
+    }
+    const deck2 = engine.tryGetDeck(2)
+    if (deck2) {
+      decks.applySnapshot(deck2.getSnapshot())
+    }
+    const mix = engine.tryGetMixer()
+    if (mix) {
+      mixer.applySnapshot(mix.getSnapshot())
     }
     frame = requestAnimationFrame(tick)
   }

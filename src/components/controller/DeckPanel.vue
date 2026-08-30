@@ -1,18 +1,37 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import type { DeckId } from '../../commands/DJCommand'
 import TransportControls from '../deck/TransportControls.vue'
 import DeckStatus from '../display/DeckStatus.vue'
 import Waveform from '../display/Waveform.vue'
 import { useCommandBus } from '../../io/keys'
 import { useDeckStore } from '../../state/deck.store'
 
-const commandBus = useCommandBus()
+const props = defineProps<{
+  deckId: DeckId
+}>()
 
+const commandBus = useCommandBus()
 const deckStore = useDeckStore()
-const { deck } = storeToRefs(deckStore)
+const { deck1, deck2, focusedDeck } = storeToRefs(deckStore)
 const loadError = ref<string | null>(null)
 const loading = ref(false)
+
+const deck = computed(() => {
+  switch (props.deckId) {
+    case 1:
+      return deck1.value
+    case 2:
+      return deck2.value
+    default: {
+      const neverDeck: never = props.deckId
+      throw new Error(`Unknown deck: ${String(neverDeck)}`)
+    }
+  }
+})
+
+const focused = computed(() => focusedDeck.value === props.deckId)
 
 async function onFileChange(event: Event): Promise<void> {
   const input = event.target
@@ -26,7 +45,7 @@ async function onFileChange(event: Event): Promise<void> {
   loading.value = true
   loadError.value = null
   try {
-    await commandBus.dispatch({ type: 'DECK_LOAD', deck: 1, file })
+    await commandBus.dispatch({ type: 'DECK_LOAD', deck: props.deckId, file })
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : 'Unable to decode audio file'
   } finally {
@@ -35,15 +54,15 @@ async function onFileChange(event: Event): Promise<void> {
 }
 
 async function togglePlay(): Promise<void> {
-  await commandBus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: 1 })
+  await commandBus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: props.deckId })
 }
 
 async function cue(): Promise<void> {
-  await commandBus.dispatch({ type: 'DECK_CUE', deck: 1 })
+  await commandBus.dispatch({ type: 'DECK_CUE', deck: props.deckId })
 }
 
 async function seek(position: number): Promise<void> {
-  await commandBus.dispatch({ type: 'DECK_SEEK', deck: 1, position })
+  await commandBus.dispatch({ type: 'DECK_SEEK', deck: props.deckId, position })
 }
 
 async function onSlider(event: Event): Promise<void> {
@@ -56,14 +75,23 @@ async function onSlider(event: Event): Promise<void> {
 </script>
 
 <template>
-  <section class="rounded-xl border border-panel-border bg-panel p-6 shadow-xl">
+  <section
+    :data-testid="`deck-${deckId}`"
+    class="rounded-xl border bg-panel p-6 shadow-xl"
+    :class="focused ? 'border-accent ring-2 ring-accent/40' : 'border-panel-border'"
+    @pointerdown="deckStore.focusDeck(deckId)"
+  >
     <div class="flex flex-wrap items-center justify-between gap-4">
       <DeckStatus
+        :deck-id="deckId"
         :track-title="deck.trackTitle"
         :position-seconds="deck.positionSeconds"
         :duration-seconds="deck.durationSeconds"
         :cue-point="deck.cuePoint"
         :playing="deck.playing"
+        :original-bpm="deck.originalBpm"
+        :analysis-status="deck.analysisStatus"
+        :focused="focused"
       />
       <label class="inline-flex cursor-pointer items-center gap-2 rounded-md border border-panel-border px-4 py-2 text-sm">
         <span>{{ loading ? 'Decoding…' : 'Load track' }}</span>
@@ -111,7 +139,7 @@ async function onSlider(event: Event): Promise<void> {
         @cue="cue"
       />
       <p class="text-xs text-muted">
-        Space play/pause · C cue · ← → seek 1s
+        {{ focused ? 'Keyboard target' : 'Click to focus' }}
       </p>
     </div>
   </section>

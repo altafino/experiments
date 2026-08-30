@@ -23,6 +23,8 @@ build.
 Implement the engineering roadmap in dependency order rather than trying to
 build the entire controller simultaneously.
 
-Current implementation phase: Phase 1 (single working deck).
-Do not implement Deck 2, mixer, BPM detection, sync, loops, effects,
-scratching, or MIDI until the corresponding phase.
+Current implementation phase: Phase 6 (tempo).
+Do not implement sync, loops, effects, scratching, headphone cue, or MIDI
+until the corresponding phase. Tempo starts with playbackRate. Do not
+introduce AudioWorklet time stretching until Phase 7. Analysis remains
+worker-only; do not store audio files in IndexedDB.

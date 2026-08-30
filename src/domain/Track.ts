@@ -1,12 +1,20 @@
+export type AnalysisStatus = 'idle' | 'pending' | 'ready' | 'failed'
+
 export interface BeatGrid {
   bpm: number
   firstBeatSeconds: number
   beats: number[]
 }
 
+export interface WaveformLevel {
+  samplesPerBucket: number
+  peaks: Float32Array
+}
+
 export interface WaveformData {
   peaks: Float32Array
   bucketCount: number
+  levels: WaveformLevel[]
 }
 
 export interface Track {
@@ -17,6 +25,7 @@ export interface Track {
   duration: number
   bpm?: number
   key?: string
+  loudness?: number
   waveform?: WaveformData
   beatGrid?: BeatGrid
   fileHandle?: FileSystemFileHandle

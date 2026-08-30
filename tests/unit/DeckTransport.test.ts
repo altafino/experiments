@@ -101,4 +101,18 @@ describe('DeckTransport', () => {
     expect(transport.isPlaying()).toBe(false)
     expect(transport.getPosition(99)).toBe(15)
   })
+
+  it('keeps two transports independent on the same clock', () => {
+    const deck1 = new DeckTransport()
+    const deck2 = new DeckTransport()
+    deck1.reset(60)
+    deck2.reset(60)
+    deck1.play(0)
+    deck2.seek(10, 0)
+
+    expect(deck1.getPosition(5)).toBe(5)
+    expect(deck1.isPlaying()).toBe(true)
+    expect(deck2.getPosition(5)).toBe(10)
+    expect(deck2.isPlaying()).toBe(false)
+  })
 })

@@ -19,9 +19,10 @@ body,
   min-height: 100%;
 }
 
-body {
-  margin: 0;
-  background: var(--color-surface);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
+.fader-vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 1.35rem;
+  height: 8.5rem;
 }
+

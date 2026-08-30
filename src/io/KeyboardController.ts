@@ -1,5 +1,10 @@
-import type { AudioEngineApi } from '../commands/DJCommand'
+import type { AudioEngineApi, DeckId } from '../commands/DJCommand'
 import type { CommandBus } from '../commands/CommandBus'
+
+export interface DeckFocus {
+  get(): DeckId
+  set(deck: DeckId): void
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
@@ -16,17 +21,22 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export class KeyboardController {
   private readonly commandBus: CommandBus
   private readonly engine: AudioEngineApi
-  private readonly onKeyDown: (event: KeyboardEvent) => void
+  private readonly focus: DeckFocus
+  private readonly onKeyDown: (event: Event) => void
 
-  constructor(commandBus: CommandBus, engine: AudioEngineApi) {
+  constructor(commandBus: CommandBus, engine: AudioEngineApi, focus: DeckFocus) {
     this.commandBus = commandBus
     this.engine = engine
-    this.onKeyDown = (event: KeyboardEvent) => {
+    this.focus = focus
+    this.onKeyDown = (event: Event) => {
+      if (!(event instanceof KeyboardEvent)) {
+        return
+      }
       void this.handleKeyDown(event)
     }
   }
 
-  attach(target: Window = window): () => void {
+  attach(target: EventTarget = window): () => void {
     target.addEventListener('keydown', this.onKeyDown)
     return () => {
       target.removeEventListener('keydown', this.onKeyDown)
@@ -38,7 +48,21 @@ export class KeyboardController {
       return
     }
 
-    const deck = this.engine.tryGetDeck(1)
+    switch (event.code) {
+      case 'Digit1':
+        event.preventDefault()
+        this.focus.set(1)
+        return
+      case 'Digit2':
+        event.preventDefault()
+        this.focus.set(2)
+        return
+      default:
+        break
+    }
+
+    const deckId = this.focus.get()
+    const deck = this.engine.tryGetDeck(deckId)
     if (!deck || deck.getSnapshot().durationSeconds <= 0) {
       return
     }
@@ -46,17 +70,17 @@ export class KeyboardController {
     switch (event.code) {
       case 'Space':
         event.preventDefault()
-        await this.commandBus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: 1 })
+        await this.commandBus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: deckId })
         return
       case 'KeyC':
         event.preventDefault()
-        await this.commandBus.dispatch({ type: 'DECK_CUE', deck: 1 })
+        await this.commandBus.dispatch({ type: 'DECK_CUE', deck: deckId })
         return
       case 'ArrowLeft': {
         event.preventDefault()
         await this.commandBus.dispatch({
           type: 'DECK_SEEK',
-          deck: 1,
+          deck: deckId,
           position: deck.getSnapshot().positionSeconds - 1,
         })
         return
@@ -65,7 +89,7 @@ export class KeyboardController {
         event.preventDefault()
         await this.commandBus.dispatch({
           type: 'DECK_SEEK',
-          deck: 1,
+          deck: deckId,
           position: deck.getSnapshot().positionSeconds + 1,
         })
         return

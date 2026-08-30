@@ -1,25 +1,55 @@
 <script setup lang="ts">
+import type { DeckId } from '../../commands/DJCommand'
+import type { AnalysisStatus } from '../../domain/Track'
 import { formatTimecode } from '../../domain/timecode'
 
-defineProps<{
+const props = defineProps<{
+  deckId: DeckId
   trackTitle?: string
   positionSeconds: number
   durationSeconds: number
   cuePoint?: number
   playing: boolean
+  focused: boolean
+  originalBpm?: number
+  analysisStatus: AnalysisStatus
 }>()
+
+function bpmLabel(): string {
+  switch (props.analysisStatus) {
+    case 'pending':
+      return 'Analyzing…'
+    case 'failed':
+      return 'Analysis failed'
+    case 'ready':
+      return props.originalBpm !== undefined
+        ? `${props.originalBpm.toFixed(2)} BPM`
+        : '— BPM'
+    case 'idle':
+      return '— BPM'
+    default: {
+      const neverStatus: never = props.analysisStatus
+      return String(neverStatus)
+    }
+  }
+}
 </script>
 
 <template>
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div>
-      <p class="text-xs tracking-[0.2em] text-muted uppercase">Deck 1</p>
+      <p class="text-xs tracking-[0.2em] uppercase" :class="focused ? 'text-accent' : 'text-muted'">
+        Deck {{ deckId }}
+      </p>
       <h2 class="mt-1 text-lg font-semibold text-ink" data-testid="track-title">
         {{ trackTitle ?? 'No track loaded' }}
       </h2>
       <p class="mt-1 text-sm text-muted">
         {{ playing ? 'Playing' : 'Paused' }}
         <span class="text-cue"> · Cue {{ formatTimecode(cuePoint ?? 0) }}</span>
+      </p>
+      <p class="mt-1 font-mono text-sm text-accent" data-testid="bpm">
+        {{ bpmLabel() }}
       </p>
     </div>
     <div class="font-mono text-right">
