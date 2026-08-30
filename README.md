@@ -1,6 +1,6 @@
 # Web DJ
 
-Browser-based two-deck DJ workstation. Phase 20: dual decks, mixer, worker analysis, tempo, master tempo, beat sync, cue, hot cues, loops, beat jump, slip, jog/scratch, Sound Color FX, Beat FX, headphone cue, library, mix recording, generic Web MIDI, and a controller display with zoomed scrolling waveforms.
+Browser-based two-deck DJ workstation. Phase 21: dual decks, mixer, worker analysis, tempo, master tempo, beat sync, cue, hot cues, loops, beat jump, slip, jog/scratch, Sound Color FX, Beat FX, headphone cue, library, mix recording, generic Web MIDI, and a Pioneer-style chassis (LCD waveforms, pad banks, LOAD platters, responsive one-deck stage).
 
 ## Architecture
 
@@ -32,9 +32,9 @@ MIDI uses the Web MIDI API. `MidiManager` owns ports; `MidiMapper` turns notes/C
 
 Beat jump skips ±1–32 beats on the track grid (`position + beats × 60 / BPM`). Quantize delays a playing jump until the next beat, same as hot cues. J / K skip one beat on the focused deck.
 
-The main display is the controller's screen: PERFORM, BROWSE, INFO and SETTINGS states share one panel above the decks, so the browser and MIDI settings no longer push the controls off screen.
+The chassis fills the viewport: LCD on top, platters left/right, mixer in the centre. PERFORM shows side-by-side zoomed scrolling waveforms (playhead fixed at the centre of each canvas, beat grid with accented downbeats, played audio dimmed). BROWSE / INFO / SETTINGS replace LCD content only — the hardware does not unmount. Pad banks (Hot Cue / Loop / Jump) are display-only in `view.store.ts`; keyboard and MIDI still dispatch the same commands. Empty platters show LOAD. Below 1280px the focused deck is staged and the peer is a 48px strip; hiding a platter never pauses it.
 
-PERFORM stacks a zoomed scrolling waveform per deck (playhead fixed at the centre, beat grid with accented downbeats, played audio dimmed) over a full-track overview strip. The zoomed view picks the coarsest multi-resolution peak level that still resolves one bucket per pixel; the analysis worker already emits levels at 64/256/1024/4096 samples per bucket. Drag a scrolling waveform to scrub, wheel over it to zoom (1–32 s visible). Display mode and zoom live in `view.store.ts` — display-only state that the engines never read.
+The zoomed view picks the coarsest multi-resolution peak level that still resolves one bucket per pixel; the analysis worker already emits levels at 64/256/1024/4096 samples per bucket. Drag a scrolling waveform to scrub, wheel over it to zoom (1–32 s visible). Hidden LCD tabs skip canvas paint. Display mode, zoom, and pad bank live in `view.store.ts` — display-only state that the engines never read.
 
 ## Scripts
 

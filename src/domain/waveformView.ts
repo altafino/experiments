@@ -148,3 +148,8 @@ export function beatTicksInWindow(
 
   return ticks
 }
+
+/** Skip canvas paint when the LCD tab is off or the element is off-screen. */
+export function shouldPaintWaveform(displayActive: boolean, intersecting: boolean): boolean {
+  return displayActive && intersecting
+}

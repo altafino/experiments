@@ -16,7 +16,6 @@ import MidiPanel from '../controller/MidiPanel.vue'
 import { DECK_THEMES } from './deckTheme'
 import ScrollingWaveform from './ScrollingWaveform.vue'
 import TrackBrowser from './TrackBrowser.vue'
-import Waveform from './Waveform.vue'
 
 const END_WARNING_SECONDS = 30
 
@@ -27,6 +26,7 @@ const { deck1, deck2 } = storeToRefs(deckStore)
 const { displayMode, zoomWindow } = storeToRefs(viewStore)
 
 const decks = computed<DeckState[]>(() => [deck1.value, deck2.value])
+const performActive = computed(() => displayMode.value === 'performance')
 
 function remainingSeconds(deck: DeckState): number {
   return Math.max(0, deck.durationSeconds - deck.positionSeconds)
@@ -65,51 +65,55 @@ function setMode(mode: DisplayMode): void {
 <template>
   <section
     data-testid="main-display"
-    class="rounded-xl border border-panel-border bg-panel shadow-xl"
+    class="lcd-well flex h-full min-h-0 flex-col overflow-hidden border border-panel-border"
   >
     <header
-      class="flex flex-wrap items-center justify-between gap-2 border-b border-panel-border px-3 py-2"
+      class="flex flex-wrap items-center justify-between gap-2 border-b border-panel-border px-3 py-1.5"
+      role="banner"
     >
-      <nav class="flex gap-1" aria-label="Display mode">
-        <button
-          v-for="mode in DISPLAY_MODES"
-          :key="mode"
-          type="button"
-          :data-testid="`display-mode-${mode}`"
-          :aria-pressed="displayMode === mode"
-          :class="[
-            'rounded-md px-3 py-1 text-[11px] tracking-[0.16em] uppercase transition-colors',
-            displayMode === mode
-              ? 'bg-accent/15 text-accent'
-              : 'text-muted hover:bg-panel-border/40 hover:text-ink',
-          ]"
-          @click="setMode(mode)"
-        >
-          {{ DISPLAY_MODE_LABELS[mode] }}
-        </button>
-      </nav>
+      <div class="flex min-w-0 items-center gap-3">
+        <h1 class="text-[10px] font-medium tracking-[0.22em] text-muted uppercase">Web DJ</h1>
+        <nav class="flex gap-1" aria-label="Display mode">
+          <button
+            v-for="mode in DISPLAY_MODES"
+            :key="mode"
+            type="button"
+            :data-testid="`display-mode-${mode}`"
+            :aria-pressed="displayMode === mode"
+            :class="[
+              'min-h-11 rounded-sm px-3 text-[10px] tracking-[0.16em] uppercase transition-colors',
+              displayMode === mode
+                ? 'bg-accent/15 text-accent'
+                : 'text-muted hover:bg-panel-border/40 hover:text-ink',
+            ]"
+            @click="setMode(mode)"
+          >
+            {{ DISPLAY_MODE_LABELS[mode] }}
+          </button>
+        </nav>
+      </div>
       <div
         v-show="displayMode === 'performance'"
-        class="flex items-center gap-1 text-[11px] text-muted"
+        class="flex items-center gap-1 text-[10px] tracking-[0.12em] text-muted uppercase"
       >
-        <span class="tracking-[0.16em] uppercase">Zoom</span>
+        <span>Zoom</span>
         <button
           type="button"
           data-testid="display-zoom-out"
           aria-label="Zoom out waveform"
-          class="rounded-md border border-panel-border px-2 py-0.5 hover:text-ink"
+          class="min-h-11 min-w-11 rounded-sm border border-panel-border px-2 hover:text-ink"
           @click="viewStore.zoom('out')"
         >
           −
         </button>
-        <span data-testid="display-zoom" class="w-8 text-center font-mono text-ink">
+        <span data-testid="display-zoom" class="w-8 text-center font-mono text-ink normal-case">
           {{ zoomWindow }}s
         </span>
         <button
           type="button"
           data-testid="display-zoom-in"
           aria-label="Zoom in waveform"
-          class="rounded-md border border-panel-border px-2 py-0.5 hover:text-ink"
+          class="min-h-11 min-w-11 rounded-sm border border-panel-border px-2 hover:text-ink"
           @click="viewStore.zoom('in')"
         >
           +
@@ -117,14 +121,17 @@ function setMode(mode: DisplayMode): void {
       </div>
     </header>
 
-    <div v-show="displayMode === 'performance'" class="flex flex-col gap-3 p-3">
+    <div
+      v-show="displayMode === 'performance'"
+      class="grid min-h-0 flex-1 grid-cols-2 gap-px bg-panel-border"
+    >
       <article
         v-for="deck in decks"
         :key="deck.deckId"
         :data-testid="`main-display-${deck.deckId}`"
-        class="flex flex-col gap-1"
+        class="flex min-h-0 flex-col bg-[#080d15] px-2 py-1"
       >
-        <div class="flex items-baseline justify-between gap-3 text-[11px]">
+        <div class="flex items-baseline justify-between gap-2 text-[11px]">
           <p class="flex min-w-0 items-baseline gap-2">
             <span
               class="shrink-0 tracking-[0.16em] uppercase"
@@ -132,7 +139,7 @@ function setMode(mode: DisplayMode): void {
             >
               Deck {{ deck.deckId }}
             </span>
-            <span class="truncate text-ink">{{ deck.trackTitle ?? 'No track' }}</span>
+            <span class="truncate text-sm text-ink">{{ deck.trackTitle ?? 'No track' }}</span>
             <span v-if="deck.analysisStatus === 'pending'" class="shrink-0 text-muted">
               analysing…
             </span>
@@ -161,36 +168,26 @@ function setMode(mode: DisplayMode): void {
           :hot-cues="deck.hotCues"
           :active-loop="deck.activeLoop"
           :logical-position-seconds="deck.logicalPositionSeconds"
+          :display-active="performActive"
           @seek="(position) => seek(deck.deckId, position)"
           @zoom="viewStore.zoom"
-        />
-        <Waveform
-          height-class="h-10"
-          :color="DECK_THEMES[deck.deckId].wave"
-          :peaks="deck.waveformPeaks"
-          :position-seconds="deck.positionSeconds"
-          :duration-seconds="deck.durationSeconds"
-          :cue-point="deck.cuePoint"
-          :hot-cues="deck.hotCues"
-          :active-loop="deck.activeLoop"
-          @seek="(position) => seek(deck.deckId, position)"
         />
       </article>
     </div>
 
-    <div v-show="displayMode === 'browse'" class="p-3">
+    <div v-show="displayMode === 'browse'" class="min-h-0 flex-1 overflow-auto p-3">
       <TrackBrowser />
     </div>
 
-    <div v-show="displayMode === 'info'" class="grid gap-3 p-3 sm:grid-cols-2">
+    <div v-show="displayMode === 'info'" class="grid min-h-0 flex-1 gap-3 overflow-auto p-3 sm:grid-cols-2">
       <dl
         v-for="deck in decks"
         :key="deck.deckId"
         :data-testid="`display-info-${deck.deckId}`"
-        class="rounded-lg border border-panel-border bg-surface/60 p-3 text-[11px]"
+        class="border border-panel-border bg-surface/60 p-3 text-sm"
       >
         <p
-          class="mb-2 tracking-[0.16em] uppercase"
+          class="mb-2 text-[10px] tracking-[0.16em] uppercase"
           :style="{ color: DECK_THEMES[deck.deckId].text }"
         >
           Deck {{ deck.deckId }}
@@ -226,7 +223,16 @@ function setMode(mode: DisplayMode): void {
       </dl>
     </div>
 
-    <div v-show="displayMode === 'settings'" class="p-3">
+    <div v-show="displayMode === 'settings'" class="min-h-0 flex-1 overflow-auto p-3">
+      <section data-testid="keyboard-help" class="mb-4 border border-panel-border p-3">
+        <h2 class="mb-2 text-[10px] tracking-[0.2em] text-muted uppercase">Keyboard</h2>
+        <p class="text-sm leading-relaxed text-ink">
+          1 / 2 focus · Space play/pause · C cue · H channel cue · R rec · Q W E hot cues · I/O/L
+          loop · , . half/double · J/K beat jump · Y slip · V vinyl · F color FX · B beat FX · N
+          cycle beat FX · T quantize · ← → seek · [ ] pitch bend · M master tempo · S sync · G
+          master deck
+        </p>
+      </section>
       <MidiPanel />
     </div>
   </section>

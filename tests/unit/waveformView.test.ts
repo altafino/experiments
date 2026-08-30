@@ -5,6 +5,7 @@ import {
   bucketSeconds,
   peakBetween,
   selectPeakLevel,
+  shouldPaintWaveform,
   waveformWindow,
   zoomIn,
   zoomOut,
@@ -102,5 +103,14 @@ describe('beatTicksInWindow', () => {
 
   it('caps runaway grids', () => {
     expect(beatTicksInWindow(grid, 0, 60 * 60, 16)).toHaveLength(16)
+  })
+})
+
+describe('shouldPaintWaveform', () => {
+  it('skips paint when the LCD tab is off or the canvas is off-screen', () => {
+    expect(shouldPaintWaveform(true, true)).toBe(true)
+    expect(shouldPaintWaveform(false, true)).toBe(false)
+    expect(shouldPaintWaveform(true, false)).toBe(false)
+    expect(shouldPaintWaveform(false, false)).toBe(false)
   })
 })

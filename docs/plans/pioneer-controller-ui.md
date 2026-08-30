@@ -142,35 +142,35 @@ Pass 7: pad bank resolved. Remaining open: none that block this plan.
 
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship.
 
-- [ ] **T1 (P1, human: ~6h / CC: ~2h)** — App shell — Rebuild `App.vue` as a no-scroll chassis: LCD, deck, mixer, deck
+- [x] **T1 (P1, human: ~6h / CC: ~2h)** — App shell — Rebuild `App.vue` as a no-scroll chassis: LCD, deck, mixer, deck
   - Surfaced by: Pass 1 — stacked cards instead of a mixer
   - Files: `src/app/App.vue`, `src/components/display/MainDisplay.vue`, `src/components/controller/DeckPanel.vue`, `src/components/mixer/MixerPanel.vue`
   - Verify: Playwright shell test + no document scroll at 1440×900
-- [ ] **T2 (P1, human: ~3h / CC: ~45min)** — LCD PERFORM — Side-by-side scrolling waveforms, shared playhead, drop deck-column waveform
+- [x] **T2 (P1, human: ~3h / CC: ~45min)** — LCD PERFORM — Side-by-side scrolling waveforms, shared playhead, drop deck-column waveform
   - Surfaced by: Pass 1 decisions 2A/3A + mockup B
   - Files: `src/components/display/MainDisplay.vue`, `src/components/display/ScrollingWaveform.vue`, `src/components/controller/DeckPanel.vue`
   - Verify: existing beat-jump and waveform e2e still pass; `scrolling-waveform-1` sits left of `-2`
-- [ ] **T3 (P1, human: ~3h / CC: ~30min)** — Pad banks — 8 pads with HOT CUE / LOOP / JUMP in `view.store.ts`
+- [x] **T3 (P1, human: ~3h / CC: ~30min)** — Pad banks — 8 pads with HOT CUE / LOOP / JUMP in `view.store.ts`
   - Surfaced by: Pass 7 issue 11
   - Files: `src/state/view.store.ts`, `src/components/deck/HotCuePads.vue`, `src/components/deck/LoopControls.vue`, `src/components/deck/BeatJumpPads.vue`
   - Verify: unit test for bank state; e2e clicks bank then a pad
-- [ ] **T4 (P1, human: ~2h / CC: ~25min)** — Empty/error — LOAD and amber error on the platter
+- [x] **T4 (P1, human: ~2h / CC: ~25min)** — Empty/error — LOAD and amber error on the platter
   - Surfaced by: Pass 2
   - Files: `src/components/deck/JogWheel.vue`, `src/components/controller/DeckPanel.vue`
   - Verify: e2e empty LOAD visible; invalid file shows platter error
-- [ ] **T5 (P2, human: ~4h / CC: ~1h)** — Breakpoints — 1440 / 1280 / <1280 one-deck stage
+- [x] **T5 (P2, human: ~4h / CC: ~1h)** — Breakpoints — 1440 / 1280 / <1280 one-deck stage
   - Surfaced by: Pass 6
   - Files: `src/app/App.vue`, `src/style.css`
   - Verify: Playwright viewports 1440, 1280, 390
-- [ ] **T6 (P2, human: ~2h / CC: ~25min)** — DESIGN.md + Plex — tokens, type, 2px radius, self-hosted IBM Plex
+- [x] **T6 (P2, human: ~2h / CC: ~25min)** — DESIGN.md + Plex — tokens, type, 2px radius, self-hosted IBM Plex
   - Surfaced by: Pass 4/5
   - Files: `DESIGN.md`, `src/style.css`, `src/app/App.vue`
   - Verify: no `rounded-xl` / `shadow-xl` on chassis; fonts load offline
-- [ ] **T7 (P2, human: ~1h / CC: ~15min)** — SETTINGS keyboard — move cheatsheet off the page header
+- [x] **T7 (P2, human: ~1h / CC: ~15min)** — SETTINGS keyboard — move cheatsheet off the page header
   - Surfaced by: Pass 1 header kill
   - Files: `src/app/App.vue`, `src/components/controller/MidiPanel.vue` or SETTINGS pane
   - Verify: e2e SETTINGS shows keyboard list; header gone
-- [ ] **T8 (P2, human: ~1h / CC: ~15min)** — Skip `ScrollingWaveform` draw when the canvas is not visible (Browse/Info/Settings or off-stage deck)
+- [x] **T8 (P2, human: ~1h / CC: ~15min)** — Skip `ScrollingWaveform` draw when the canvas is not visible (Browse/Info/Settings or off-stage deck)
   - Surfaced by: Eng performance — rAF snapshots still trigger watch/draw on `v-show` hidden canvases
   - Files: `src/components/display/ScrollingWaveform.vue`
   - Verify: unit or component test that draw is not called while hidden; no audio change
