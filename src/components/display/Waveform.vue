@@ -9,6 +9,9 @@ const props = defineProps<{
   cuePoint?: number
   hotCues?: { id: 'A' | 'B' | 'C'; positionSeconds: number }[]
   activeLoop?: { startSeconds: number; endSeconds: number; active: boolean }
+  logicalPositionSeconds?: number
+  heightClass?: string
+  color?: string
 }>()
 
 const emit = defineEmits<{
@@ -51,7 +54,7 @@ function draw(): void {
   if (peaks && peaks.length > 0) {
     const mid = height / 2
     const barWidth = Math.max(1, width / peaks.length)
-    ctx.fillStyle = '#4aa7c2'
+    ctx.fillStyle = props.color ?? '#4aa7c2'
     for (let i = 0; i < peaks.length; i += 1) {
       const amplitude = peaks[i] ?? 0
       const barHeight = Math.max(1, amplitude * (height - 8))
@@ -82,6 +85,11 @@ function draw(): void {
       ctx.fillStyle = loop.active ? '#7ee0ff' : '#8b98ad'
       ctx.fillRect(Math.floor(startX), 0, 2, height)
       ctx.fillRect(Math.floor(endX), 0, 2, height)
+    }
+    if (props.logicalPositionSeconds !== undefined) {
+      const slipX = (props.logicalPositionSeconds / props.durationSeconds) * width
+      ctx.fillStyle = '#d4a5ff'
+      ctx.fillRect(Math.floor(slipX), 0, 2, height)
     }
   }
 }
@@ -125,6 +133,8 @@ watch(
       props.activeLoop
         ? `${props.activeLoop.startSeconds}:${props.activeLoop.endSeconds}:${props.activeLoop.active}`
         : '',
+      props.logicalPositionSeconds,
+      props.color,
     ] as const,
   () => {
     draw()
@@ -136,7 +146,7 @@ watch(
   <canvas
     ref="canvasRef"
     data-testid="waveform"
-    class="h-28 w-full cursor-pointer rounded-md"
+    :class="['w-full cursor-pointer rounded-md', heightClass ?? 'h-28']"
     role="slider"
     :aria-valuemin="0"
     :aria-valuemax="durationSeconds"

@@ -1,5 +1,7 @@
 import type { AudioEngineApi, DeckId } from '../commands/DJCommand'
 import type { CommandBus } from '../commands/CommandBus'
+import { nextBeatFx, DEFAULT_BEAT_FX } from '../domain/beatFx'
+import { nextColorFx, DEFAULT_COLOR_FX } from '../domain/colorFx'
 import type { HotCueId } from '../domain/DeckState'
 
 export interface DeckFocus {
@@ -82,6 +84,59 @@ export class KeyboardController {
         event.preventDefault()
         this.focus.set(2)
         return
+      case 'KeyF': {
+        event.preventDefault()
+        const deckId = this.focus.get()
+        const mixer = this.engine.tryGetMixer()
+        const current = mixer?.getSnapshot().channels[deckId].colorFx ?? DEFAULT_COLOR_FX
+        await this.commandBus.dispatch({
+          type: 'SET_COLOR_FX',
+          deck: deckId,
+          fx: nextColorFx(current),
+        })
+        return
+      }
+      case 'KeyB': {
+        event.preventDefault()
+        const mixer = this.engine.tryGetMixer()
+        const enabled = mixer?.getSnapshot().beatFxEnabled ?? false
+        await this.commandBus.dispatch({
+          type: 'SET_BEAT_FX_ENABLED',
+          enabled: !enabled,
+        })
+        return
+      }
+      case 'KeyN': {
+        event.preventDefault()
+        const mixer = this.engine.tryGetMixer()
+        const current = mixer?.getSnapshot().beatFx ?? DEFAULT_BEAT_FX
+        await this.commandBus.dispatch({
+          type: 'SET_BEAT_FX',
+          fx: nextBeatFx(current),
+        })
+        return
+      }
+      case 'KeyH': {
+        event.preventDefault()
+        const deckId = this.focus.get()
+        const mixer = this.engine.tryGetMixer()
+        const enabled = mixer?.getSnapshot().channels[deckId].cue ?? false
+        await this.commandBus.dispatch({
+          type: 'SET_CHANNEL_CUE',
+          deck: deckId,
+          enabled: !enabled,
+        })
+        return
+      }
+      case 'KeyR': {
+        event.preventDefault()
+        if (this.engine.isRecording()) {
+          await this.commandBus.dispatch({ type: 'RECORD_STOP' })
+        } else {
+          await this.commandBus.dispatch({ type: 'RECORD_START' })
+        }
+        return
+      }
       default:
         break
     }
@@ -164,9 +219,28 @@ export class KeyboardController {
           enabled: !deck.getSnapshot().quantizeEnabled,
         })
         return
+      case 'KeyY':
+        event.preventDefault()
+        await this.commandBus.dispatch({
+          type: 'SET_SLIP',
+          deck: deckId,
+          enabled: !deck.getSnapshot().slipEnabled,
+        })
+        return
+      case 'KeyV':
+        event.preventDefault()
+        await this.commandBus.dispatch({
+          type: 'SET_VINYL',
+          deck: deckId,
+          enabled: !deck.getSnapshot().vinylMode,
+        })
+        return
       case 'KeyQ':
       case 'KeyW':
       case 'KeyE': {
+        if (event.repeat) {
+          return
+        }
         event.preventDefault()
         const code = event.code
         const id = hotCueIdFromCode(code)
@@ -197,6 +271,14 @@ export class KeyboardController {
         event.preventDefault()
         await this.commandBus.dispatch({ type: 'LOOP_DOUBLE', deck: deckId })
         return
+      case 'KeyJ':
+        event.preventDefault()
+        await this.commandBus.dispatch({ type: 'BEAT_JUMP', deck: deckId, beats: -1 })
+        return
+      case 'KeyK':
+        event.preventDefault()
+        await this.commandBus.dispatch({ type: 'BEAT_JUMP', deck: deckId, beats: 1 })
+        return
       default:
         return
     }
@@ -226,6 +308,20 @@ export class KeyboardController {
           return
         }
         await this.commandBus.dispatch({ type: 'DECK_CUE_RELEASE', deck: deckId })
+        return
+      }
+      case 'KeyQ':
+      case 'KeyW':
+      case 'KeyE': {
+        event.preventDefault()
+        const deckId = this.focus.get()
+        const deck = this.engine.tryGetDeck(deckId)
+        if (!deck) {
+          return
+        }
+        const code = event.code
+        const id = hotCueIdFromCode(code)
+        await this.commandBus.dispatch({ type: 'HOT_CUE_RELEASE', deck: deckId, id })
         return
       }
       default:

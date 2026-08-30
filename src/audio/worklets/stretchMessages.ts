@@ -12,5 +12,16 @@ export type StretchToWorklet =
   | { type: 'setLoop'; startSamples: number; endSamples: number }
   | { type: 'clearLoop' }
   | { type: 'stop' }
+  | {
+      type: 'scratchStart'
+      offsetSamples: number
+      playId: number
+      loopStartSamples?: number
+      loopEndSamples?: number
+    }
+  | { type: 'scratchMove'; positionSamples: number; velocity: number }
+  | { type: 'scratchCoast'; velocity: number; playId: number }
 
-export type StretchFromWorklet = { type: 'ended'; playId: number }
+export type StretchFromWorklet =
+  | { type: 'ended'; playId: number }
+  | { type: 'scratchSettled'; playId: number; positionSamples: number }

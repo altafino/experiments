@@ -1,18 +1,15 @@
 import type { AnalysisRepository, StoredAnalysis } from './AnalysisRepository'
-
-const DB_NAME = 'web-dj'
-const STORE_NAME = 'analysis'
-const DB_VERSION = 1
+import { ANALYSIS_STORE, openWebDjDb } from './webDjDb'
 
 export class IndexedDbRepository implements AnalysisRepository {
   async get(key: string): Promise<StoredAnalysis | undefined> {
     if (typeof indexedDB === 'undefined') {
       return undefined
     }
-    const db = await openDb()
+    const db = await openWebDjDb()
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly')
-      const request = tx.objectStore(STORE_NAME).get(key)
+      const tx = db.transaction(ANALYSIS_STORE, 'readonly')
+      const request = tx.objectStore(ANALYSIS_STORE).get(key)
       request.onsuccess = () => {
         resolve(request.result as StoredAnalysis | undefined)
       }
@@ -26,10 +23,10 @@ export class IndexedDbRepository implements AnalysisRepository {
     if (typeof indexedDB === 'undefined') {
       return
     }
-    const db = await openDb()
+    const db = await openWebDjDb()
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite')
-      const request = tx.objectStore(STORE_NAME).put(record)
+      const tx = db.transaction(ANALYSIS_STORE, 'readwrite')
+      const request = tx.objectStore(ANALYSIS_STORE).put(record)
       request.onsuccess = () => {
         resolve()
       }
@@ -38,22 +35,4 @@ export class IndexedDbRepository implements AnalysisRepository {
       }
     })
   }
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'key' })
-      }
-    }
-    request.onsuccess = () => {
-      resolve(request.result)
-    }
-    request.onerror = () => {
-      reject(request.error ?? new Error('IndexedDB open failed'))
-    }
-  })
 }

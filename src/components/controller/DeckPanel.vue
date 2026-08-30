@@ -6,7 +6,10 @@ import TempoSlider from '../deck/TempoSlider.vue'
 import TransportControls from '../deck/TransportControls.vue'
 import HotCuePads from '../deck/HotCuePads.vue'
 import LoopControls from '../deck/LoopControls.vue'
+import BeatJumpPads from '../deck/BeatJumpPads.vue'
+import JogWheel from '../deck/JogWheel.vue'
 import DeckStatus from '../display/DeckStatus.vue'
+import { DECK_THEMES } from '../display/deckTheme'
 import Waveform from '../display/Waveform.vue'
 import { useCommandBus } from '../../io/keys'
 import { useDeckStore } from '../../state/deck.store'
@@ -96,6 +99,8 @@ async function onSlider(event: Event): Promise<void> {
         :duration-seconds="deck.durationSeconds"
         :cue-point="deck.cuePoint"
         :playing="deck.playing"
+        :slip-active="deck.slipActive"
+        :logical-position-seconds="deck.logicalPositionSeconds"
         :original-bpm="deck.originalBpm"
         :effective-bpm="deck.effectiveBpm"
         :analysis-status="deck.analysisStatus"
@@ -121,12 +126,14 @@ async function onSlider(event: Event): Promise<void> {
     <div class="mt-6 flex gap-4">
       <div class="min-w-0 flex-1">
         <Waveform
+          :color="DECK_THEMES[props.deckId].wave"
           :peaks="deck.waveformPeaks"
           :position-seconds="deck.positionSeconds"
           :duration-seconds="deck.durationSeconds"
           :cue-point="deck.cuePoint"
           :hot-cues="deck.hotCues"
           :active-loop="deck.activeLoop"
+          :logical-position-seconds="deck.logicalPositionSeconds"
           @seek="seek"
         />
         <input
@@ -150,6 +157,7 @@ async function onSlider(event: Event): Promise<void> {
         :master-tempo="deck.masterTempo"
         :master-deck="deck.masterDeck"
         :sync-enabled="deck.syncEnabled"
+        :slip-enabled="deck.slipEnabled"
       />
     </div>
 
@@ -172,6 +180,13 @@ async function onSlider(event: Event): Promise<void> {
           :deck-id="deckId"
           :loop-in-seconds="deck.loopInSeconds"
           :active-loop="deck.activeLoop"
+          :disabled="deck.durationSeconds <= 0 || loading"
+        />
+        <BeatJumpPads :deck-id="deckId" :disabled="deck.durationSeconds <= 0 || loading" />
+        <JogWheel
+          :deck-id="deckId"
+          :vinyl-mode="deck.vinylMode"
+          :jog-velocity="deck.jogVelocity"
           :disabled="deck.durationSeconds <= 0 || loading"
         />
       </div>

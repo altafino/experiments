@@ -1,5 +1,7 @@
 import type { Clock } from '../AudioClock'
+import type { ColorFxType } from '../../domain/colorFx'
 import type { EqBand } from '../../domain/MixerState'
+import { ColorFx } from './ColorFx'
 import { dbToLinear, eqKnobToDb } from './eq'
 import { rampParam } from './rampParam'
 
@@ -9,8 +11,8 @@ const HIGH_SHELF_HZ = 5000
 const MID_Q = 1
 
 /**
- * Per-channel trim → 3-band EQ → channel fader.
- * Color FX and cue send are later phases.
+ * Per-channel trim → 3-band EQ → Sound Color FX → channel fader.
+ * Cue tap is pre-fader (after Color FX).
  */
 export class ChannelStrip {
   readonly input: GainNode
@@ -18,6 +20,7 @@ export class ChannelStrip {
   private readonly low: BiquadFilterNode
   private readonly mid: BiquadFilterNode
   private readonly high: BiquadFilterNode
+  private readonly colorFx: ColorFx
   private readonly faderNode: GainNode
   private readonly clock: Clock
 
@@ -28,6 +31,7 @@ export class ChannelStrip {
     this.low = context.createBiquadFilter()
     this.mid = context.createBiquadFilter()
     this.high = context.createBiquadFilter()
+    this.colorFx = new ColorFx(context, clock)
     this.faderNode = context.createGain()
 
     this.low.type = 'lowshelf'
@@ -42,7 +46,17 @@ export class ChannelStrip {
     this.trimNode.connect(this.low)
     this.low.connect(this.mid)
     this.mid.connect(this.high)
-    this.high.connect(this.faderNode)
+    this.high.connect(this.colorFx.input)
+    this.colorFx.output.connect(this.faderNode)
+  }
+
+  /** Pre-fader listen tap (after Color FX). */
+  get cueTap(): AudioNode {
+    return this.colorFx.output
+  }
+
+  attachPitch(): void {
+    this.colorFx.attachPitch()
   }
 
   get output(): GainNode {
@@ -75,5 +89,13 @@ export class ChannelStrip {
 
   setFader(value: number): void {
     rampParam(this.faderNode.gain, value, this.clock.currentTime)
+  }
+
+  setColorFx(type: ColorFxType): void {
+    this.colorFx.setType(type)
+  }
+
+  setColor(knob: number): void {
+    this.colorFx.setAmount(knob)
   }
 }

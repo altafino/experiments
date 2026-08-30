@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import type { DeckId } from '../../commands/DJCommand'
+import {
+  COLOR_FX_TYPES,
+  colorFxLabel,
+  colorFxTestId,
+  type ColorFxType,
+} from '../../domain/colorFx'
 import type { ChannelMixState, EqBand } from '../../domain/MixerState'
 import { MIXER_DEFAULTS } from '../../domain/MixerState'
 import { useCommandBus } from '../../io/keys'
+import { DECK_THEMES } from '../display/deckTheme'
 import MixerFader from './MixerFader.vue'
 
 const props = defineProps<{
@@ -20,14 +27,32 @@ async function setEq(band: EqBand, value: number): Promise<void> {
   await commandBus.dispatch({ type: 'SET_EQ', deck: props.deckId, band, value })
 }
 
+async function setColor(value: number): Promise<void> {
+  await commandBus.dispatch({ type: 'SET_COLOR', deck: props.deckId, value })
+}
+
+async function setColorFx(fx: ColorFxType): Promise<void> {
+  await commandBus.dispatch({ type: 'SET_COLOR_FX', deck: props.deckId, fx })
+}
+
 async function setFader(value: number): Promise<void> {
   await commandBus.dispatch({ type: 'SET_CHANNEL_FADER', deck: props.deckId, value })
+}
+
+async function toggleCue(): Promise<void> {
+  await commandBus.dispatch({
+    type: 'SET_CHANNEL_CUE',
+    deck: props.deckId,
+    enabled: !props.channel.cue,
+  })
 }
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-4">
-    <p class="text-xs tracking-[0.2em] text-muted uppercase">Ch {{ deckId }}</p>
+  <div class="flex flex-col items-center gap-3">
+    <p class="text-xs tracking-[0.2em] uppercase" :style="{ color: DECK_THEMES[deckId].text }">
+      Ch {{ deckId }}
+    </p>
     <div class="flex items-end gap-3">
       <MixerFader
         label="Trim"
@@ -58,6 +83,13 @@ async function setFader(value: number): Promise<void> {
         @change="(value) => setEq('low', value)"
       />
       <MixerFader
+        label="Color"
+        :test-id="`channel-${deckId}-color`"
+        :value="channel.color"
+        :reset-value="MIXER_DEFAULTS.color"
+        @change="setColor"
+      />
+      <MixerFader
         label="Fader"
         :test-id="`channel-${deckId}-fader`"
         :value="channel.fader"
@@ -65,5 +97,35 @@ async function setFader(value: number): Promise<void> {
         @change="setFader"
       />
     </div>
+    <div class="flex max-w-[14rem] flex-wrap justify-center gap-1">
+      <button
+        v-for="fx in COLOR_FX_TYPES"
+        :key="fx"
+        type="button"
+        :data-testid="`channel-${deckId}-${colorFxTestId(fx)}`"
+        class="rounded px-1.5 py-0.5 text-[9px] tracking-wide uppercase"
+        :class="
+          channel.colorFx === fx
+            ? 'bg-accent text-surface'
+            : 'border border-panel-border text-muted'
+        "
+        :aria-pressed="channel.colorFx === fx"
+        @click="setColorFx(fx)"
+      >
+        {{ colorFxLabel(fx) }}
+      </button>
+    </div>
+    <button
+      type="button"
+      :data-testid="`channel-${deckId}-cue`"
+      class="rounded px-3 py-0.5 text-[9px] tracking-wide uppercase"
+      :class="
+        channel.cue ? 'bg-accent text-surface' : 'border border-panel-border text-muted'
+      "
+      :aria-pressed="channel.cue"
+      @click="toggleCue"
+    >
+      Cue
+    </button>
   </div>
 </template>

@@ -25,9 +25,9 @@ function walkTsFiles(dir: string): string[] {
 }
 
 describe('audio engine isolation', () => {
-  it('keeps vue out of audio, command, and domain layers', () => {
+  it('keeps vue out of audio, command, domain, and midi layers', () => {
     const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
-    const layers = ['src/audio', 'src/commands', 'src/domain', 'src/analysis', 'src/library']
+    const layers = ['src/audio', 'src/commands', 'src/domain', 'src/analysis', 'src/library', 'src/midi']
     const vueImport = /from\s+['"]vue['"]/
 
     for (const layer of layers) {
@@ -57,22 +57,38 @@ describe('audio engine isolation', () => {
       setMasterTempo: () => undefined,
       setQuantize: () => undefined,
       hotCue: () => undefined,
+      hotCueRelease: () => undefined,
       clearHotCue: () => undefined,
+      setSlip: () => undefined,
+      setVinyl: () => undefined,
+      jogTouchStart: () => undefined,
+      jogTouchMove: () => undefined,
+      jogTouchEnd: () => undefined,
       loopIn: () => undefined,
       loopOut: () => undefined,
       reloop: () => undefined,
       beatLoop: () => undefined,
       loopHalve: () => undefined,
       loopDouble: () => undefined,
+      beatJump: () => undefined,
       getSnapshot: () => snapshot,
     }
     const mixer: MixerController = {
       setTrim: () => undefined,
       setEq: () => undefined,
+      setColorFx: () => undefined,
+      setColor: () => undefined,
       setChannelFader: () => undefined,
       setCrossfader: () => undefined,
       setCrossfaderCurve: () => undefined,
       setMasterGain: () => undefined,
+      setBeatFx: () => undefined,
+      setBeatFxBeats: () => undefined,
+      setBeatFxLevel: () => undefined,
+      setBeatFxEnabled: () => undefined,
+      setChannelCue: () => undefined,
+      setCueMix: () => undefined,
+      setPhonesLevel: () => undefined,
       getSnapshot: () => emptyMixerState(),
     }
     const engine: AudioEngineApi = {
@@ -82,6 +98,9 @@ describe('audio engine isolation', () => {
       tryGetDeck: () => deck,
       getMixer: () => mixer,
       tryGetMixer: () => mixer,
+      startRecording: () => undefined,
+      stopRecording: async () => new Blob(),
+      isRecording: () => false,
       setMasterDeck: () => undefined,
       setSync: () => undefined,
       ensureMaster: () => undefined,

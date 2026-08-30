@@ -1,11 +1,14 @@
 import { TrackAnalyzer } from '../analysis/TrackAnalyzer'
 import type { AudioEngineApi, DeckId } from '../commands/DJCommand'
 import type { Track } from '../domain/Track'
+import { beatFxBpmFromDecks } from '../domain/beatFx'
 import { fileAnalysisKey } from '../library/fileAnalysisKey'
 import { AudioClock } from './AudioClock'
 import { DeckEngine } from './deck/DeckEngine'
 import { MixerEngine } from './mixer/MixerEngine'
+import { MixRecorder } from './recorder/MixRecorder'
 import { SyncEngine } from './sync/SyncEngine'
+import { COLOR_PITCH_WORKLET_URL } from './worklets/colorPitchWorklet'
 import { STRETCH_WORKLET_URL } from './worklets/stretchWorklet'
 
 /**
@@ -17,6 +20,7 @@ export class AudioEngine implements AudioEngineApi {
   private deck1: DeckEngine | null = null
   private deck2: DeckEngine | null = null
   private mixer: MixerEngine | null = null
+  private mixRecorder: MixRecorder | null = null
   private sync: SyncEngine | null = null
   private startPromise: Promise<void> | null = null
   private readonly analyzer: TrackAnalyzer
@@ -48,12 +52,21 @@ export class AudioEngine implements AudioEngineApi {
     deck1.connect(mixer.input(1))
     deck2.connect(mixer.input(2))
     mixer.connect(context.destination)
+    const capture = context.createMediaStreamDestination()
+    mixer.masterTap.connect(capture)
+    this.mixRecorder = new MixRecorder(capture.stream)
     try {
       await addWorkletModule(context, STRETCH_WORKLET_URL)
       deck1.attachStretch()
       deck2.attachStretch()
     } catch {
       // Master tempo falls back to playbackRate if the worklet cannot load.
+    }
+    try {
+      await addWorkletModule(context, COLOR_PITCH_WORKLET_URL)
+      mixer.attachColorPitch()
+    } catch {
+      // Color pitch degrades to dry if the worklet cannot load.
     }
     this.context = context
     this.mixer = mixer
@@ -123,6 +136,18 @@ export class AudioEngine implements AudioEngineApi {
     return this.mixer ?? undefined
   }
 
+  startRecording(): void {
+    this.requireRecorder().start()
+  }
+
+  async stopRecording(): Promise<Blob> {
+    return this.requireRecorder().stop()
+  }
+
+  isRecording(): boolean {
+    return this.mixRecorder?.recording ?? false
+  }
+
   setMasterDeck(deck: DeckId): void {
     this.requireSync().setMaster(deck)
   }
@@ -139,6 +164,9 @@ export class AudioEngine implements AudioEngineApi {
     this.deck1?.applyDueActions()
     this.deck2?.applyDueActions()
     this.sync?.follow()
+    this.mixer?.setBeatFxBpm(
+      beatFxBpmFromDecks(this.deck1?.getSnapshot(), this.deck2?.getSnapshot()),
+    )
   }
 
   private async analyzeLoadedTrack(
@@ -181,6 +209,13 @@ export class AudioEngine implements AudioEngineApi {
       throw new Error('Audio engine is not started')
     }
     return this.sync
+  }
+
+  private requireRecorder(): MixRecorder {
+    if (!this.mixRecorder) {
+      throw new Error('Audio engine is not started')
+    }
+    return this.mixRecorder
   }
 }
 

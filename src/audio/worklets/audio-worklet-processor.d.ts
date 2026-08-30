@@ -1,3 +1,5 @@
+declare const sampleRate: number
+
 interface AudioWorkletProcessor {
   readonly port: MessagePort
 }

@@ -11,6 +11,8 @@ const props = defineProps<{
   cuePoint?: number
   playing: boolean
   focused: boolean
+  slipActive?: boolean
+  logicalPositionSeconds?: number
   originalBpm?: number
   effectiveBpm?: number
   analysisStatus: AnalysisStatus
@@ -50,6 +52,9 @@ function bpmLabel(): string {
       <p class="mt-1 text-sm text-muted">
         {{ playing ? 'Playing' : 'Paused' }}
         <span class="text-cue"> · Cue {{ formatTimecode(cuePoint ?? 0) }}</span>
+        <span v-if="slipActive" class="text-accent" data-testid="logical-position">
+          · Slip {{ formatTimecode(logicalPositionSeconds ?? positionSeconds) }}
+        </span>
       </p>
       <p class="mt-1 font-mono text-sm text-accent" data-testid="bpm">
         {{ bpmLabel() }}

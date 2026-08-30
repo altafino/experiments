@@ -1,19 +1,31 @@
 import type { AudioEngineApi, DeckId, DJCommand } from './DJCommand'
+import { downloadBlob, mixRecordingFilename } from '../io/download'
+import { LibraryService, type LibraryController } from '../library/LibraryService'
+import { MidiService, type MidiController } from '../midi/MidiService'
 
 /**
- * Normalized command entry point for pointer, keyboard, and (later) MIDI.
+ * Normalized command entry point for pointer, keyboard, and MIDI.
  * The bus talks to the audio engine; it never schedules audio itself.
  */
 export class CommandBus {
   private readonly engine: AudioEngineApi
+  private readonly library: LibraryController
+  private readonly midi: MidiController
 
-  constructor(engine: AudioEngineApi) {
+  constructor(
+    engine: AudioEngineApi,
+    library: LibraryController = new LibraryService(),
+    midi: MidiController = new MidiService(),
+  ) {
     this.engine = engine
+    this.library = library
+    this.midi = midi
   }
 
   async dispatch(command: DJCommand): Promise<void> {
     switch (command.type) {
       case 'DECK_LOAD':
+        await this.library.importFiles([command.file])
         await this.engine.load(command.deck, command.file)
         return
       case 'DECK_PLAY':
@@ -146,6 +158,41 @@ export class CommandBus {
         this.engine.getDeck(command.deck).loopDouble()
         this.refreshSync()
         return
+      case 'BEAT_JUMP':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).beatJump(command.beats)
+        this.refreshSync()
+        return
+      case 'SET_SLIP':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).setSlip(command.enabled)
+        this.refreshSync()
+        return
+      case 'HOT_CUE_RELEASE':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).hotCueRelease(command.id)
+        this.refreshSync()
+        return
+      case 'SET_VINYL':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).setVinyl(command.enabled)
+        this.refreshSync()
+        return
+      case 'JOG_TOUCH_START':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).jogTouchStart()
+        this.refreshSync()
+        return
+      case 'JOG_TOUCH_MOVE':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).jogTouchMove(command.deltaRadians)
+        this.refreshSync()
+        return
+      case 'JOG_TOUCH_END':
+        await this.engine.ensureStarted()
+        this.engine.getDeck(command.deck).jogTouchEnd()
+        this.refreshSync()
+        return
       case 'SET_TRIM':
         await this.engine.ensureStarted()
         this.engine.getMixer().setTrim(command.deck, command.value)
@@ -153,6 +200,14 @@ export class CommandBus {
       case 'SET_EQ':
         await this.engine.ensureStarted()
         this.engine.getMixer().setEq(command.deck, command.band, command.value)
+        return
+      case 'SET_COLOR_FX':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setColorFx(command.deck, command.fx)
+        return
+      case 'SET_COLOR':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setColor(command.deck, command.value)
         return
       case 'SET_CHANNEL_FADER':
         await this.engine.ensureStarted()
@@ -169,6 +224,98 @@ export class CommandBus {
       case 'SET_MASTER_GAIN':
         await this.engine.ensureStarted()
         this.engine.getMixer().setMasterGain(command.value)
+        return
+      case 'SET_BEAT_FX':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setBeatFx(command.fx)
+        return
+      case 'SET_BEAT_FX_BEAT':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setBeatFxBeats(command.beats)
+        return
+      case 'SET_BEAT_FX_LEVEL':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setBeatFxLevel(command.value)
+        return
+      case 'SET_BEAT_FX_ENABLED':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setBeatFxEnabled(command.enabled)
+        return
+      case 'SET_CHANNEL_CUE':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setChannelCue(command.deck, command.enabled)
+        return
+      case 'SET_CUE_MIX':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setCueMix(command.value)
+        return
+      case 'SET_PHONES_LEVEL':
+        await this.engine.ensureStarted()
+        this.engine.getMixer().setPhonesLevel(command.value)
+        return
+      case 'LIBRARY_IMPORT':
+        await this.library.importFiles(command.files)
+        return
+      case 'LIBRARY_LOAD': {
+        const file = this.library.fileOf(command.trackId)
+        if (!file) {
+          throw new Error('Re-import this track to load it')
+        }
+        await this.engine.load(command.deck, file)
+        return
+      }
+      case 'LIBRARY_SET_QUERY':
+        this.library.setQuery(command.query)
+        return
+      case 'LIBRARY_SET_SORT':
+        this.library.setSort(command.sort)
+        return
+      case 'LIBRARY_SET_ARTIST':
+        this.library.setArtistFilter(command.artist)
+        return
+      case 'LIBRARY_SET_BPM':
+        this.library.setBpmFilter(command.min, command.max)
+        return
+      case 'LIBRARY_SELECT_PLAYLIST':
+        this.library.selectPlaylist(command.playlistId)
+        return
+      case 'LIBRARY_CREATE_PLAYLIST':
+        this.library.createPlaylist(command.name)
+        return
+      case 'LIBRARY_DELETE_PLAYLIST':
+        this.library.deletePlaylist(command.playlistId)
+        return
+      case 'LIBRARY_ADD_TO_PLAYLIST':
+        this.library.addToPlaylist(command.playlistId, command.trackId)
+        return
+      case 'LIBRARY_REMOVE_FROM_PLAYLIST':
+        this.library.removeFromPlaylist(command.playlistId, command.trackId)
+        return
+      case 'RECORD_START':
+        await this.engine.ensureStarted()
+        this.engine.startRecording()
+        return
+      case 'RECORD_STOP': {
+        const blob = await this.engine.stopRecording()
+        if (blob.size > 0) {
+          downloadBlob(blob, mixRecordingFilename())
+        }
+        return
+      }
+      case 'MIDI_CONNECT':
+        await this.midi.connect()
+        return
+      case 'MIDI_DISCONNECT':
+        this.midi.disconnect()
+        return
+      case 'MIDI_LEARN':
+        this.midi.startLearn(command.actionId)
+        return
+      case 'MIDI_UNMAP':
+        this.midi.unmap(command.actionId)
+        return
+      case 'MIDI_RESET_MAP':
+        await this.midi.resetMap()
         return
       default: {
         const neverCommand: never = command

@@ -1,4 +1,4 @@
-import type { AnalysisStatus } from './Track'
+import type { AnalysisStatus, BeatGrid, WaveformLevel } from './Track'
 import { DEFAULT_TEMPO_RANGE, type PitchBend, type TempoRange } from './tempo'
 
 export const HOT_CUE_IDS = ['A', 'B', 'C'] as const
@@ -40,8 +40,12 @@ export interface DeckState {
   loopInSeconds?: number
   activeLoop?: Loop
   slipEnabled: boolean
+  slipActive: boolean
+  logicalPositionSeconds?: number
   quantizeEnabled: boolean
   waveformPeaks?: Float32Array
+  waveformLevels?: WaveformLevel[]
+  beatGrid?: BeatGrid
   analysisStatus: AnalysisStatus
 }
 
@@ -63,6 +67,7 @@ export function emptyDeckState(deckId: 1 | 2): DeckState {
     hotCues: [],
     cuePreviewing: false,
     slipEnabled: false,
+    slipActive: false,
     quantizeEnabled: false,
     analysisStatus: 'idle',
   }

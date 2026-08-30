@@ -18,6 +18,7 @@ const props = defineProps<{
   masterTempo: boolean
   masterDeck: boolean
   syncEnabled: boolean
+  slipEnabled: boolean
 }>()
 
 const commandBus = useCommandBus()
@@ -67,6 +68,14 @@ async function toggleSync(): Promise<void> {
     type: 'SET_SYNC',
     deck: props.deckId,
     enabled: !props.syncEnabled,
+  })
+}
+
+async function toggleSlip(): Promise<void> {
+  await commandBus.dispatch({
+    type: 'SET_SLIP',
+    deck: props.deckId,
+    enabled: !props.slipEnabled,
   })
 }
 </script>
@@ -139,6 +148,16 @@ async function toggleSync(): Promise<void> {
         SYNC
       </button>
     </div>
+    <button
+      type="button"
+      data-testid="slip"
+      class="rounded px-2 py-1 text-[9px] tracking-wide uppercase"
+      :class="slipEnabled ? 'bg-accent text-surface' : 'border border-panel-border text-muted'"
+      :aria-pressed="slipEnabled"
+      @click="toggleSlip"
+    >
+      SLIP
+    </button>
     <div class="flex gap-1">
       <button
         type="button"

@@ -23,8 +23,10 @@ build.
 Implement the engineering roadmap in dependency order rather than trying to
 build the entire controller simultaneously.
 
-Current implementation phase: Phase 11 (slip).
-Do not implement effects, scratching, headphone cue, or MIDI
-until the corresponding phase. Sync orchestrates on AudioEngine; do not
+Current implementation phase: Phase 20 (controller UI: zoomed scrolling
+waveform with beat grid, tabbed main display).
+Display state (mode, zoom) lives in `view.store.ts` and must never influence
+audio timing.
+Sync orchestrates on AudioEngine; do not
 change the public DeckEngine command surface for sync. Analysis remains
 worker-only; do not store audio files in IndexedDB.

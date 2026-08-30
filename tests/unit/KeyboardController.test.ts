@@ -21,13 +21,20 @@ function mockDeck(deckId: DeckId): DeckController {
     setMasterTempo: vi.fn(),
     setQuantize: vi.fn(),
     hotCue: vi.fn(),
+    hotCueRelease: vi.fn(),
     clearHotCue: vi.fn(),
+    setSlip: vi.fn(),
+    setVinyl: vi.fn(),
+    jogTouchStart: vi.fn(),
+    jogTouchMove: vi.fn(),
+    jogTouchEnd: vi.fn(),
     loopIn: vi.fn(),
     loopOut: vi.fn(),
     reloop: vi.fn(),
     beatLoop: vi.fn(),
     loopHalve: vi.fn(),
     loopDouble: vi.fn(),
+    beatJump: vi.fn(),
     getSnapshot: vi.fn(() => snapshot),
   }
 }
@@ -36,10 +43,19 @@ function mockMixer(): MixerController {
   return {
     setTrim: vi.fn(),
     setEq: vi.fn(),
+    setColorFx: vi.fn(),
+    setColor: vi.fn(),
     setChannelFader: vi.fn(),
     setCrossfader: vi.fn(),
     setCrossfaderCurve: vi.fn(),
     setMasterGain: vi.fn(),
+    setBeatFx: vi.fn(),
+    setBeatFxBeats: vi.fn(),
+    setBeatFxLevel: vi.fn(),
+    setBeatFxEnabled: vi.fn(),
+    setChannelCue: vi.fn(),
+    setCueMix: vi.fn(),
+    setPhonesLevel: vi.fn(),
     getSnapshot: vi.fn(() => emptyMixerState()),
   }
 }
@@ -53,6 +69,9 @@ function mockEngine(deck1: DeckController, deck2: DeckController): AudioEngineAp
     tryGetDeck: vi.fn((id: DeckId) => (id === 1 ? deck1 : deck2)),
     getMixer: vi.fn(() => mixer),
     tryGetMixer: vi.fn(() => mixer),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(async () => new Blob()),
+    isRecording: vi.fn(() => false),
     setMasterDeck: vi.fn(),
     setSync: vi.fn(),
     ensureMaster: vi.fn(),
@@ -202,5 +221,161 @@ describe('KeyboardController', () => {
       expect(deck1.reloop).toHaveBeenCalledOnce()
     })
     expect(deck2.loopIn).not.toHaveBeenCalled()
+  })
+
+  it('sends beat jump for the focused deck', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 1
+    const engine = mockEngine(deck1, deck2)
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyK', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(deck1.beatJump).toHaveBeenCalledWith(1)
+    })
+    focused = 2
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyJ', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(deck2.beatJump).toHaveBeenCalledWith(-1)
+    })
+    expect(deck1.beatJump).not.toHaveBeenCalledWith(-1)
+  })
+
+  it('toggles slip and releases hot cues for the focused deck', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 1
+    const engine = mockEngine(deck1, deck2)
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyY', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(deck1.setSlip).toHaveBeenCalledWith(true)
+    })
+    target.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(deck1.hotCueRelease).toHaveBeenCalledWith('A')
+    })
+    expect(deck2.setSlip).not.toHaveBeenCalled()
+  })
+
+  it('toggles vinyl on the focused deck', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 1
+    const engine = mockEngine(deck1, deck2)
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyV', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(deck1.setVinyl).toHaveBeenCalledWith(true)
+    })
+    expect(deck2.setVinyl).not.toHaveBeenCalled()
+  })
+
+  it('cycles color FX on the focused mixer channel', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 2
+    const engine = mockEngine(deck1, deck2)
+    const mixer = engine.tryGetMixer()
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mixer?.setColorFx).toHaveBeenCalledWith(2, 'noise')
+    })
+    expect(mixer?.setColorFx).not.toHaveBeenCalledWith(1, expect.anything())
+    expect(deck1.play).not.toHaveBeenCalled()
+  })
+
+  it('toggles and cycles beat FX on the mixer', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 1
+    const engine = mockEngine(deck1, deck2)
+    const mixer = engine.tryGetMixer()
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mixer?.setBeatFxEnabled).toHaveBeenCalledWith(true)
+    })
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyN', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mixer?.setBeatFx).toHaveBeenCalledWith('reverb')
+    })
+    expect(deck1.play).not.toHaveBeenCalled()
+  })
+
+  it('toggles channel cue on the focused mixer channel', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    let focused: DeckId = 1
+    const engine = mockEngine(deck1, deck2)
+    const mixer = engine.tryGetMixer()
+    const target = attachKeyboard(
+      engine,
+      () => focused,
+      (deck) => {
+        focused = deck
+      },
+    )
+
+    focused = 2
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyH', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(mixer?.setChannelCue).toHaveBeenCalledWith(2, true)
+    })
+    expect(mixer?.setChannelCue).not.toHaveBeenCalledWith(1, expect.anything())
+    expect(deck1.play).not.toHaveBeenCalled()
+  })
+
+  it('toggles mix recording without a loaded track', async () => {
+    const deck1 = mockDeck(1)
+    const deck2 = mockDeck(2)
+    const engine = mockEngine(deck1, deck2)
+    const target = attachKeyboard(
+      engine,
+      () => 1,
+      () => undefined,
+    )
+
+    target.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR', bubbles: true }))
+    await vi.waitFor(() => {
+      expect(engine.startRecording).toHaveBeenCalledOnce()
+    })
+    expect(deck1.play).not.toHaveBeenCalled()
   })
 })

@@ -1,7 +1,9 @@
 import type { AnalysisResult } from '../../analysis/types'
 import type { DeckController } from '../../commands/DJCommand'
+import { beatJumpSeconds, type BeatJumpLength } from '../../domain/beatJump'
 import type { DeckState, HotCueId } from '../../domain/DeckState'
-import { beatLoopEnd, minLoopSeconds, type BeatLoopLength } from '../../domain/loop'
+import { radiansToSeconds } from '../../domain/jog'
+import { beatLoopEnd, minLoopSeconds, wrapIntoLoop, type BeatLoopLength } from '../../domain/loop'
 import {
   isAtCue,
   nearestBeatSeconds,
@@ -14,7 +16,9 @@ import { rampParam } from '../mixer/rampParam'
 import { STRETCH_PROCESSOR_NAME, type StretchFromWorklet, type StretchToWorklet } from '../worklets/stretchMessages'
 import { CueEngine } from './CueEngine'
 import { DeckTransport } from './DeckTransport'
+import { JogEngine } from './JogEngine'
 import { LoopEngine } from './LoopEngine'
+import { SlipEngine, type SlipReason } from './SlipEngine'
 import { TempoEngine } from './TempoEngine'
 
 /**
@@ -30,6 +34,12 @@ export class DeckEngine implements DeckController {
   private readonly tempo: TempoEngine
   private readonly cues: CueEngine
   private readonly loops: LoopEngine
+  private readonly slip: SlipEngine
+  private readonly jog: JogEngine
+  private holdingHotCue: HotCueId | undefined
+  private scratching = false
+  private scratchWasPlaying = false
+  private awaitingCoast = false
   private buffer: AudioBuffer | null = null
   private track: Track | null = null
   private source: AudioBufferSourceNode | null = null
@@ -51,6 +61,8 @@ export class DeckEngine implements DeckController {
     this.tempo = new TempoEngine()
     this.cues = new CueEngine()
     this.loops = new LoopEngine()
+    this.slip = new SlipEngine()
+    this.jog = new JogEngine()
   }
 
   connect(destination: AudioNode): void {
@@ -85,6 +97,12 @@ export class DeckEngine implements DeckController {
     this.track = track
     this.cues.reset()
     this.loops.reset()
+    this.slip.reset()
+    this.jog.reset(buffer.duration)
+    this.holdingHotCue = undefined
+    this.scratching = false
+    this.scratchWasPlaying = false
+    this.awaitingCoast = false
     this.transport.reset(buffer.duration)
     this.transport.setPlaybackRate(this.tempo.playbackRate(), this.clock.currentTime)
     this.analysisStatus = track.waveform ? 'ready' : 'pending'
@@ -110,6 +128,9 @@ export class DeckEngine implements DeckController {
   }
 
   play(): void {
+    if (this.scratching || this.awaitingCoast) {
+      return
+    }
     const now = this.clock.currentTime
     if (this.cues.isPreviewing() && this.transport.isPlaying()) {
       this.cues.confirmPreview()
@@ -130,13 +151,18 @@ export class DeckEngine implements DeckController {
     if (!this.transport.play(now)) {
       return
     }
+    this.slip.resume(now)
     this.startSource(this.transport.getPosition(now))
   }
 
   pause(): void {
+    if (this.scratching || this.awaitingCoast) {
+      this.endScratch(false)
+    }
     const now = this.clock.currentTime
     this.cues.confirmPreview()
     this.cues.clearPending()
+    this.slip.pause(now)
     this.transport.pause(now)
     this.stopSource()
   }
@@ -155,6 +181,8 @@ export class DeckEngine implements DeckController {
       if (this.cues.isPreviewing()) {
         return
       }
+      this.endScratch(false)
+      this.discardSlip()
       this.transport.cue(now)
       this.stopSource()
       return
@@ -180,8 +208,10 @@ export class DeckEngine implements DeckController {
 
   seek(positionSeconds: number): void {
     const now = this.clock.currentTime
+    this.endScratch(false)
     this.cues.confirmPreview()
     this.cues.clearPending()
+    this.discardSlip()
     const next = this.transport.seek(positionSeconds, now)
     if (this.transport.isPlaying()) {
       this.startSource(next)
@@ -201,11 +231,87 @@ export class DeckEngine implements DeckController {
       this.cues.setHotCue(id, this.quantizeSetPosition(this.transport.getPosition(this.clock.currentTime)))
       return
     }
+    this.holdingHotCue = id
+    this.beginSlip('hotCue')
     this.jumpTo(existing, true)
+  }
+
+  hotCueRelease(id: HotCueId): void {
+    if (this.holdingHotCue !== id) {
+      return
+    }
+    this.holdingHotCue = undefined
+    const jump = this.slip.end('hotCue', this.clock.currentTime)
+    if (jump !== undefined) {
+      this.restoreFromSlip(jump)
+      return
+    }
+    const loop = this.loops.activeRegion()
+    if (!loop) {
+      return
+    }
+    const now = this.clock.currentTime
+    const wrapped = wrapIntoLoop(this.transport.getPosition(now), loop.startSeconds, loop.endSeconds)
+    this.transport.seek(wrapped, now)
+    this.applyLoopToGraph()
   }
 
   clearHotCue(id: HotCueId): void {
     this.cues.clearHotCue(id)
+  }
+
+  setSlip(enabled: boolean): void {
+    this.slip.setEnabled(enabled)
+    if (!enabled) {
+      this.holdingHotCue = undefined
+      return
+    }
+    if (this.loops.isActive()) {
+      this.beginSlip('loop')
+    }
+    if (this.scratching) {
+      this.beginSlip('scratch')
+    }
+  }
+
+  setVinyl(enabled: boolean): void {
+    if (!enabled && (this.scratching || this.awaitingCoast)) {
+      this.endScratch(true)
+    }
+    this.jog.setVinyl(enabled)
+  }
+
+  jogTouchStart(): void {
+    if (!this.buffer || !this.jog.isVinyl()) {
+      return
+    }
+    this.startScratch()
+  }
+
+  jogTouchMove(deltaRadians: number): void {
+    if (!this.buffer) {
+      return
+    }
+    if (!this.jog.isVinyl()) {
+      const direction = this.jog.takeNudge(deltaRadians)
+      if (direction !== 0) {
+        this.setPitchBend(direction)
+      }
+      return
+    }
+    if (!this.scratching) {
+      this.startScratch()
+    }
+    this.moveScratch(deltaRadians)
+  }
+
+  jogTouchEnd(): void {
+    if (!this.jog.isVinyl()) {
+      this.jog.resetNudge()
+      this.setPitchBend(0)
+      return
+    }
+    this.endScratch(true)
   }
 
   loopIn(): void {
@@ -214,7 +320,7 @@ export class DeckEngine implements DeckController {
     }
     const position = this.quantizeSetPosition(this.transport.getPosition(this.clock.currentTime))
     this.loops.setIn(position, this.minLoopLength())
-    this.applyLoopToGraph()
+    this.afterLoopChange()
   }
 
   loopOut(): void {
@@ -225,7 +331,7 @@ export class DeckEngine implements DeckController {
     if (!this.loops.setOut(position, this.minLoopLength())) {
       return
     }
-    this.applyLoopToGraph()
+    this.afterLoopChange()
   }
 
   reloop(): void {
@@ -238,7 +344,7 @@ export class DeckEngine implements DeckController {
         return
       case 'engage':
       case 'exit':
-        this.applyLoopToGraph()
+        this.afterLoopChange()
         if (action === 'engage' && !this.transport.isPlaying()) {
           this.play()
         }
@@ -263,7 +369,7 @@ export class DeckEngine implements DeckController {
     if (!this.loops.setBeatLoop(start, end, beats, this.minLoopLength())) {
       return
     }
-    this.applyLoopToGraph()
+    this.afterLoopChange()
     if (!this.transport.isPlaying()) {
       this.play()
     }
@@ -273,22 +379,47 @@ export class DeckEngine implements DeckController {
     if (!this.loops.halve(this.minLoopLength())) {
       return
     }
-    this.applyLoopToGraph()
+    this.afterLoopChange()
   }
 
   loopDouble(): void {
     if (!this.loops.double(this.transport.duration())) {
       return
     }
-    this.applyLoopToGraph()
+    this.afterLoopChange()
+  }
+
+  beatJump(beats: BeatJumpLength): void {
+    if (!this.buffer) {
+      return
+    }
+    const bpm = this.track?.bpm ?? this.track?.beatGrid?.bpm
+    if (bpm === undefined) {
+      return
+    }
+    const now = this.clock.currentTime
+    const duration = this.transport.duration()
+    let target = beatJumpSeconds(this.transport.getPosition(now), beats, bpm, duration)
+    const loop = this.loops.activeRegion()
+    if (loop) {
+      target = wrapIntoLoop(target, loop.startSeconds, loop.endSeconds)
+    }
+    if (!this.transport.isPlaying()) {
+      this.endScratch(false)
+      this.cues.confirmPreview()
+      this.cues.clearPending()
+      this.transport.seek(target, now)
+      return
+    }
+    this.jumpTo(target, true)
   }
 
   applyDueActions(): void {
-    const position = this.cues.takeDueJump(this.clock.currentTime)
-    if (position === undefined) {
-      return
+    const jump = this.cues.takeDueJump(this.clock.currentTime)
+    if (jump !== undefined) {
+      this.applyJump(jump)
     }
-    this.applyJump(position)
+    this.advanceCoast()
   }
 
   setTempoPercent(percent: number): void {
@@ -376,7 +507,7 @@ export class DeckEngine implements DeckController {
       deckId: this.deckId,
       trackId: track?.id,
       trackTitle: track?.title,
-      playing: this.transport.isPlaying(),
+      playing: this.transport.isPlaying() || this.scratching || this.awaitingCoast,
       positionSeconds: this.transport.getPosition(now),
       durationSeconds: this.transport.duration(),
       originalBpm: track?.bpm,
@@ -387,16 +518,20 @@ export class DeckEngine implements DeckController {
       masterTempo: this.tempo.masterTempo(),
       syncEnabled: this.syncEnabled,
       masterDeck: this.masterDeck,
-      vinylMode: false,
-      jogVelocity: 0,
+      vinylMode: this.jog.isVinyl(),
+      jogVelocity: this.jog.velocity(),
       cuePoint: this.transport.cuePoint(),
       hotCues: this.cues.list(),
       cuePreviewing: this.cues.isPreviewing(),
       loopInSeconds: this.loops.pendingInPoint(),
       activeLoop: this.loops.snapshot(),
-      slipEnabled: false,
+      slipEnabled: this.slip.isEnabled(),
+      slipActive: this.slip.isActive(),
+      logicalPositionSeconds: this.slip.isActive() ? this.slip.position(now) : undefined,
       quantizeEnabled: this.cues.quantizeEnabled(),
       waveformPeaks: track?.waveform?.peaks,
+      waveformLevels: track?.waveform?.levels,
+      beatGrid: track?.beatGrid,
       analysisStatus: this.analysisStatus,
     }
   }
@@ -451,11 +586,190 @@ export class DeckEngine implements DeckController {
       this.stopSource()
       return
     }
+    this.slip.resume(now)
     this.startSource(positionSeconds)
   }
 
   private minLoopLength(): number {
     return minLoopSeconds(this.track?.bpm ?? this.track?.beatGrid?.bpm)
+  }
+
+  private beginSlip(reason: SlipReason): void {
+    const now = this.clock.currentTime
+    this.slip.begin(
+      reason,
+      now,
+      this.transport.getPosition(now),
+      this.transport.rate(),
+      this.transport.duration(),
+      this.transport.isPlaying(),
+    )
+  }
+
+  private afterLoopChange(): void {
+    this.applyLoopToGraph()
+    if (this.loops.isActive()) {
+      this.beginSlip('loop')
+      return
+    }
+    const jump = this.slip.end('loop', this.clock.currentTime)
+    if (jump !== undefined) {
+      this.restoreFromSlip(jump)
+    }
+  }
+
+  private restoreFromSlip(positionSeconds: number, forcePlay = false): void {
+    const now = this.clock.currentTime
+    this.cues.clearPending()
+    this.cues.confirmPreview()
+    const playing = forcePlay || this.transport.isPlaying()
+    this.transport.seek(positionSeconds, now)
+    if (playing) {
+      this.transport.play(now)
+      this.startSource(positionSeconds)
+    }
+  }
+
+  private discardSlip(): void {
+    this.holdingHotCue = undefined
+    this.slip.discard()
+  }
+
+  private startScratch(): void {
+    if (!this.buffer || this.scratching) {
+      return
+    }
+    const now = this.clock.currentTime
+    this.awaitingCoast = false
+    this.jog.stopCoast()
+    this.scratchWasPlaying = this.transport.isPlaying()
+    this.beginSlip('scratch')
+    this.scratching = true
+    const position = this.transport.getPosition(now)
+    this.jog.touchStart(now, position)
+    if (this.scratchWasPlaying) {
+      this.transport.pause(now)
+    }
+    this.stopSource()
+    this.sendScratchStart(position)
+  }
+
+  private moveScratch(deltaRadians: number): void {
+    if (!this.buffer || !this.scratching) {
+      return
+    }
+    const now = this.clock.currentTime
+    let next = this.transport.getPosition(now) + radiansToSeconds(deltaRadians)
+    const loop = this.loops.activeRegion()
+    if (loop) {
+      next = wrapIntoLoop(next, loop.startSeconds, loop.endSeconds)
+    }
+    const velocity = this.jog.touchMove(now, next)
+    this.transport.seek(next, now)
+    this.sendScratchMove(next, velocity)
+  }
+
+  private endScratch(resume: boolean): void {
+    if (!this.scratching && !this.awaitingCoast) {
+      return
+    }
+    const now = this.clock.currentTime
+    const velocity = this.scratching ? this.jog.touchEnd() : this.jog.velocity()
+    this.scratching = false
+    const jump = this.slip.end('scratch', now)
+    if (jump !== undefined) {
+      this.awaitingCoast = false
+      this.jog.stopCoast()
+      this.restoreFromSlip(jump, this.scratchWasPlaying && resume)
+      return
+    }
+    if (resume && this.jog.startCoast(now, this.transport.getPosition(now), velocity)) {
+      this.awaitingCoast = true
+      this.sendScratchCoast(velocity)
+      return
+    }
+    this.awaitingCoast = false
+    this.jog.stopCoast()
+    this.finishScratchResume(resume)
+  }
+
+  private advanceCoast(): void {
+    if (!this.awaitingCoast) {
+      return
+    }
+    const now = this.clock.currentTime
+    const position = this.jog.coastPosition(now)
+    if (position !== undefined) {
+      this.transport.seek(position, now)
+    }
+    if (this.jog.isCoasting() || this.stretchNode) {
+      return
+    }
+    this.awaitingCoast = false
+    this.finishScratchResume(true)
+  }
+
+  private finishScratchResume(resume: boolean): void {
+    const now = this.clock.currentTime
+    const position = this.transport.getPosition(now)
+    if (resume && this.scratchWasPlaying) {
+      if (!this.transport.play(now)) {
+        this.stopSource()
+        return
+      }
+      this.startSource(position)
+      return
+    }
+    this.stopSource()
+  }
+
+  private sendScratchStart(positionSeconds: number): void {
+    const node = this.stretchNode
+    const buffer = this.buffer
+    if (!node || !buffer) {
+      return
+    }
+    this.stretchPlayId += 1
+    this.stretchActive = true
+    const start: Extract<StretchToWorklet, { type: 'scratchStart' }> = {
+      type: 'scratchStart',
+      offsetSamples: positionSeconds * buffer.sampleRate,
+      playId: this.stretchPlayId,
+    }
+    const loop = this.loops.activeRegion()
+    if (loop) {
+      start.loopStartSamples = loop.startSeconds * buffer.sampleRate
+      start.loopEndSamples = loop.endSeconds * buffer.sampleRate
+    }
+    node.port.postMessage(start)
+  }
+
+  private sendScratchMove(positionSeconds: number, velocity: number): void {
+    const node = this.stretchNode
+    const buffer = this.buffer
+    if (!node || !buffer) {
+      return
+    }
+    const move: StretchToWorklet = {
+      type: 'scratchMove',
+      positionSamples: positionSeconds * buffer.sampleRate,
+      velocity,
+    }
+    node.port.postMessage(move)
+  }
+
+  private sendScratchCoast(velocity: number): void {
+    const node = this.stretchNode
+    if (!node) {
+      return
+    }
+    this.stretchPlayId += 1
+    const coast: StretchToWorklet = {
+      type: 'scratchCoast',
+      velocity,
+      playId: this.stretchPlayId,
+    }
+    node.port.postMessage(coast)
   }
 
   private syncTransportLoop(): void {
@@ -494,6 +808,7 @@ export class DeckEngine implements DeckController {
     const now = this.clock.currentTime
     const rate = this.tempo.playbackRate() * this.phaseMul
     this.transport.setPlaybackRate(rate, now)
+    this.slip.setRate(rate, now)
     if (this.source) {
       rampParam(this.source.playbackRate, rate, this.context.currentTime)
     }
@@ -504,7 +819,7 @@ export class DeckEngine implements DeckController {
   }
 
   private startSource(offsetSeconds: number): void {
-    if (!this.buffer) {
+    if (!this.buffer || this.scratching) {
       return
     }
     if (this.tempo.masterTempo() && this.stretchNode) {
@@ -540,6 +855,7 @@ export class DeckEngine implements DeckController {
         return
       }
       this.transport.notifyEnded()
+      this.discardSlip()
       this.source = null
     }
     source.start(this.context.currentTime, offset)
@@ -611,13 +927,30 @@ export class DeckEngine implements DeckController {
   }
 
   private onStretchMessage(message: StretchFromWorklet): void {
-    if (message.type !== 'ended') {
-      return
+    switch (message.type) {
+      case 'ended':
+        if (!this.stretchActive || message.playId !== this.stretchPlayId) {
+          return
+        }
+        this.stretchActive = false
+        this.transport.notifyEnded()
+        this.discardSlip()
+        return
+      case 'scratchSettled':
+        if (!this.awaitingCoast || message.playId !== this.stretchPlayId) {
+          return
+        }
+        this.awaitingCoast = false
+        this.jog.stopCoast()
+        if (this.buffer) {
+          this.transport.seek(message.positionSamples / this.buffer.sampleRate, this.clock.currentTime)
+        }
+        this.finishScratchResume(true)
+        return
+      default: {
+        const neverMessage: never = message
+        void neverMessage
+      }
     }
-    if (!this.stretchActive || message.playId !== this.stretchPlayId) {
-      return
-    }
-    this.stretchActive = false
-    this.transport.notifyEnded()
   }
 }

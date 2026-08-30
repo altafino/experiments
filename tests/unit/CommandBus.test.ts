@@ -3,15 +3,28 @@ import { CommandBus } from '../../src/commands/CommandBus'
 import type { AudioEngineApi, DeckController, DeckId, MixerController } from '../../src/commands/DJCommand'
 import { emptyDeckState } from '../../src/domain/DeckState'
 import { emptyMixerState } from '../../src/domain/MixerState'
+import { emptyMidiState } from '../../src/domain/midi'
+import { fileAnalysisKey } from '../../src/library/fileAnalysisKey'
+import { LibraryService } from '../../src/library/LibraryService'
+import type { MidiController } from '../../src/midi/MidiService'
 
 function mockMixer(): MixerController {
   return {
     setTrim: vi.fn(),
     setEq: vi.fn(),
+    setColorFx: vi.fn(),
+    setColor: vi.fn(),
     setChannelFader: vi.fn(),
     setCrossfader: vi.fn(),
     setCrossfaderCurve: vi.fn(),
     setMasterGain: vi.fn(),
+    setBeatFx: vi.fn(),
+    setBeatFxBeats: vi.fn(),
+    setBeatFxLevel: vi.fn(),
+    setBeatFxEnabled: vi.fn(),
+    setChannelCue: vi.fn(),
+    setCueMix: vi.fn(),
+    setPhonesLevel: vi.fn(),
     getSnapshot: vi.fn(() => emptyMixerState()),
   }
 }
@@ -32,13 +45,20 @@ function mockDeck(deckId: DeckId, playing = false): DeckController {
     setMasterTempo: vi.fn(),
     setQuantize: vi.fn(),
     hotCue: vi.fn(),
+    hotCueRelease: vi.fn(),
     clearHotCue: vi.fn(),
+    setSlip: vi.fn(),
+    setVinyl: vi.fn(),
+    jogTouchStart: vi.fn(),
+    jogTouchMove: vi.fn(),
+    jogTouchEnd: vi.fn(),
     loopIn: vi.fn(),
     loopOut: vi.fn(),
     reloop: vi.fn(),
     beatLoop: vi.fn(),
     loopHalve: vi.fn(),
     loopDouble: vi.fn(),
+    beatJump: vi.fn(),
     getSnapshot: vi.fn(() => snapshot),
   }
 }
@@ -58,6 +78,9 @@ function createHarness(playing = false): {
     tryGetDeck: vi.fn(() => deck),
     getMixer: vi.fn(() => mixer),
     tryGetMixer: vi.fn(() => mixer),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(async () => new Blob()),
+    isRecording: vi.fn(() => false),
     setMasterDeck: vi.fn(),
     setSync: vi.fn(),
     ensureMaster: vi.fn(),
@@ -116,6 +139,9 @@ describe('CommandBus', () => {
       tryGetDeck: vi.fn((id: DeckId) => (id === 1 ? deck1 : deck2)),
       getMixer: vi.fn(() => mixer),
       tryGetMixer: vi.fn(() => mixer),
+      startRecording: vi.fn(),
+      stopRecording: vi.fn(async () => new Blob()),
+      isRecording: vi.fn(() => false),
       setMasterDeck: vi.fn(),
       setSync: vi.fn(),
       ensureMaster: vi.fn(),
@@ -135,17 +161,35 @@ describe('CommandBus', () => {
 
     await bus.dispatch({ type: 'SET_TRIM', deck: 1, value: 0.25 })
     await bus.dispatch({ type: 'SET_EQ', deck: 2, band: 'low', value: 0 })
+    await bus.dispatch({ type: 'SET_COLOR_FX', deck: 1, fx: 'noise' })
+    await bus.dispatch({ type: 'SET_COLOR', deck: 2, value: 0.8 })
     await bus.dispatch({ type: 'SET_CHANNEL_FADER', deck: 1, value: 0.1 })
     await bus.dispatch({ type: 'SET_CROSSFADER', value: 0.8 })
     await bus.dispatch({ type: 'SET_CROSSFADER_CURVE', curve: 'sharp' })
     await bus.dispatch({ type: 'SET_MASTER_GAIN', value: 0.6 })
+    await bus.dispatch({ type: 'SET_BEAT_FX', fx: 'reverb' })
+    await bus.dispatch({ type: 'SET_BEAT_FX_BEAT', beats: 1 })
+    await bus.dispatch({ type: 'SET_BEAT_FX_LEVEL', value: 0.8 })
+    await bus.dispatch({ type: 'SET_BEAT_FX_ENABLED', enabled: true })
+    await bus.dispatch({ type: 'SET_CHANNEL_CUE', deck: 1, enabled: true })
+    await bus.dispatch({ type: 'SET_CUE_MIX', value: 0.25 })
+    await bus.dispatch({ type: 'SET_PHONES_LEVEL', value: 0.7 })
 
     expect(mixer.setTrim).toHaveBeenCalledWith(1, 0.25)
     expect(mixer.setEq).toHaveBeenCalledWith(2, 'low', 0)
+    expect(mixer.setColorFx).toHaveBeenCalledWith(1, 'noise')
+    expect(mixer.setColor).toHaveBeenCalledWith(2, 0.8)
     expect(mixer.setChannelFader).toHaveBeenCalledWith(1, 0.1)
     expect(mixer.setCrossfader).toHaveBeenCalledWith(0.8)
     expect(mixer.setCrossfaderCurve).toHaveBeenCalledWith('sharp')
     expect(mixer.setMasterGain).toHaveBeenCalledWith(0.6)
+    expect(mixer.setBeatFx).toHaveBeenCalledWith('reverb')
+    expect(mixer.setBeatFxBeats).toHaveBeenCalledWith(1)
+    expect(mixer.setBeatFxLevel).toHaveBeenCalledWith(0.8)
+    expect(mixer.setBeatFxEnabled).toHaveBeenCalledWith(true)
+    expect(mixer.setChannelCue).toHaveBeenCalledWith(1, true)
+    expect(mixer.setCueMix).toHaveBeenCalledWith(0.25)
+    expect(mixer.setPhonesLevel).toHaveBeenCalledWith(0.7)
     expect(deck.play).not.toHaveBeenCalled()
   })
 
@@ -244,5 +288,84 @@ describe('CommandBus', () => {
     expect(deck.loopHalve).toHaveBeenCalledOnce()
     expect(deck.loopDouble).toHaveBeenCalledOnce()
     expect(deck.reloop).toHaveBeenCalledOnce()
+  })
+
+  it('routes beat jump to the deck', async () => {
+    const { bus, deck } = createHarness()
+
+    await bus.dispatch({ type: 'BEAT_JUMP', deck: 1, beats: 4 })
+
+    expect(deck.beatJump).toHaveBeenCalledWith(4)
+  })
+
+  it('routes slip and hot-cue release to the deck', async () => {
+    const { bus, deck } = createHarness()
+
+    await bus.dispatch({ type: 'SET_SLIP', deck: 1, enabled: true })
+    await bus.dispatch({ type: 'HOT_CUE_RELEASE', deck: 1, id: 'A' })
+
+    expect(deck.setSlip).toHaveBeenCalledWith(true)
+    expect(deck.hotCueRelease).toHaveBeenCalledWith('A')
+  })
+
+  it('routes vinyl and jog touch to the deck', async () => {
+    const { bus, deck } = createHarness()
+
+    await bus.dispatch({ type: 'SET_VINYL', deck: 1, enabled: true })
+    await bus.dispatch({ type: 'JOG_TOUCH_START', deck: 1 })
+    await bus.dispatch({ type: 'JOG_TOUCH_MOVE', deck: 1, deltaRadians: 0.5 })
+    await bus.dispatch({ type: 'JOG_TOUCH_END', deck: 1 })
+
+    expect(deck.setVinyl).toHaveBeenCalledWith(true)
+    expect(deck.jogTouchStart).toHaveBeenCalledOnce()
+    expect(deck.jogTouchMove).toHaveBeenCalledWith(0.5)
+    expect(deck.jogTouchEnd).toHaveBeenCalledOnce()
+  })
+
+  it('imports library files and loads a playable row onto a deck', async () => {
+    const { bus, engine } = createHarness()
+    const file = new File([new Uint8Array([1, 2, 3])], 'Autechre - Fold.wav', { type: 'audio/wav' })
+
+    await bus.dispatch({ type: 'LIBRARY_IMPORT', files: [file] })
+    await bus.dispatch({ type: 'LIBRARY_LOAD', deck: 1, trackId: fileAnalysisKey(file) })
+
+    expect(engine.load).toHaveBeenCalledWith(1, file)
+  })
+
+  it('starts and stops mix recording on the engine', async () => {
+    const { bus, engine } = createHarness()
+
+    await bus.dispatch({ type: 'RECORD_START' })
+    await bus.dispatch({ type: 'RECORD_STOP' })
+
+    expect(engine.startRecording).toHaveBeenCalledOnce()
+    expect(engine.stopRecording).toHaveBeenCalledOnce()
+    expect(engine.getDeck).not.toHaveBeenCalled()
+  })
+
+  it('routes MIDI session commands to the MIDI controller, not the decks', async () => {
+    const { engine, deck } = createHarness()
+    const midi: MidiController = {
+      connect: vi.fn(async () => undefined),
+      disconnect: vi.fn(),
+      startLearn: vi.fn(),
+      unmap: vi.fn(),
+      resetMap: vi.fn(async () => undefined),
+      getSnapshot: vi.fn(() => emptyMidiState()),
+    }
+    const bus = new CommandBus(engine, new LibraryService(), midi)
+
+    await bus.dispatch({ type: 'MIDI_CONNECT' })
+    await bus.dispatch({ type: 'MIDI_LEARN', actionId: 'play:1' })
+    await bus.dispatch({ type: 'MIDI_UNMAP', actionId: 'play:1' })
+    await bus.dispatch({ type: 'MIDI_RESET_MAP' })
+    await bus.dispatch({ type: 'MIDI_DISCONNECT' })
+
+    expect(midi.connect).toHaveBeenCalledOnce()
+    expect(midi.startLearn).toHaveBeenCalledWith('play:1')
+    expect(midi.unmap).toHaveBeenCalledWith('play:1')
+    expect(midi.resetMap).toHaveBeenCalledOnce()
+    expect(midi.disconnect).toHaveBeenCalledOnce()
+    expect(deck.play).not.toHaveBeenCalled()
   })
 })

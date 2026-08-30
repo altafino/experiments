@@ -26,12 +26,20 @@ function padTitle(id: HotCueId): string {
   return formatTimecode(cue.positionSeconds)
 }
 
-async function onPad(id: HotCueId, event: MouseEvent): Promise<void> {
+async function padDown(id: HotCueId, event: PointerEvent): Promise<void> {
   if (event.shiftKey) {
     await commandBus.dispatch({ type: 'CLEAR_HOT_CUE', deck: props.deckId, id })
     return
   }
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    target.setPointerCapture(event.pointerId)
+  }
   await commandBus.dispatch({ type: 'HOT_CUE', deck: props.deckId, id })
+}
+
+async function padUp(id: HotCueId): Promise<void> {
+  await commandBus.dispatch({ type: 'HOT_CUE_RELEASE', deck: props.deckId, id })
 }
 
 async function toggleQuantize(): Promise<void> {
@@ -61,7 +69,9 @@ async function toggleQuantize(): Promise<void> {
       :disabled="disabled"
       :aria-pressed="Boolean(cueAt(id))"
       :title="padTitle(id)"
-      @click="onPad(id, $event)"
+      @pointerdown.prevent="padDown(id, $event)"
+      @pointerup.prevent="padUp(id)"
+      @pointercancel.prevent="padUp(id)"
     >
       {{ id }}
     </button>
