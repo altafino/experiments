@@ -49,7 +49,21 @@ describe('audio engine isolation', () => {
         snapshot.playing = false
       },
       cue: () => undefined,
+      cueRelease: () => undefined,
       seek: () => undefined,
+      setTempoPercent: () => undefined,
+      setTempoRange: () => undefined,
+      setPitchBend: () => undefined,
+      setMasterTempo: () => undefined,
+      setQuantize: () => undefined,
+      hotCue: () => undefined,
+      clearHotCue: () => undefined,
+      loopIn: () => undefined,
+      loopOut: () => undefined,
+      reloop: () => undefined,
+      beatLoop: () => undefined,
+      loopHalve: () => undefined,
+      loopDouble: () => undefined,
       getSnapshot: () => snapshot,
     }
     const mixer: MixerController = {
@@ -68,6 +82,10 @@ describe('audio engine isolation', () => {
       tryGetDeck: () => deck,
       getMixer: () => mixer,
       tryGetMixer: () => mixer,
+      setMasterDeck: () => undefined,
+      setSync: () => undefined,
+      ensureMaster: () => undefined,
+      maintainSync: () => undefined,
     }
 
     const bus = new CommandBus(engine)

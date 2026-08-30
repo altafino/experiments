@@ -10,6 +10,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  worker: {
+    format: 'es',
+  },
   test: {
     environment: 'node',
     pool: 'threads',

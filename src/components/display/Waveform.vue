@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { hotCueColor } from '../../domain/quantize'
 
 const props = defineProps<{
   peaks?: Float32Array
   positionSeconds: number
   durationSeconds: number
+  cuePoint?: number
+  hotCues?: { id: 'A' | 'B' | 'C'; positionSeconds: number }[]
+  activeLoop?: { startSeconds: number; endSeconds: number; active: boolean }
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +63,26 @@ function draw(): void {
     const x = (props.positionSeconds / props.durationSeconds) * width
     ctx.fillStyle = '#f3b23e'
     ctx.fillRect(Math.floor(x), 0, 2, height)
+    if (props.cuePoint !== undefined) {
+      const cueX = (props.cuePoint / props.durationSeconds) * width
+      ctx.fillStyle = '#f3b23e'
+      ctx.fillRect(Math.floor(cueX), 0, 2, height)
+    }
+    for (const cue of props.hotCues ?? []) {
+      const cueX = (cue.positionSeconds / props.durationSeconds) * width
+      ctx.fillStyle = hotCueColor(cue.id)
+      ctx.fillRect(Math.floor(cueX), 0, 2, height)
+    }
+    const loop = props.activeLoop
+    if (loop) {
+      const startX = (loop.startSeconds / props.durationSeconds) * width
+      const endX = (loop.endSeconds / props.durationSeconds) * width
+      ctx.fillStyle = loop.active ? 'rgba(126, 224, 255, 0.18)' : 'rgba(139, 152, 173, 0.12)'
+      ctx.fillRect(startX, 0, Math.max(1, endX - startX), height)
+      ctx.fillStyle = loop.active ? '#7ee0ff' : '#8b98ad'
+      ctx.fillRect(Math.floor(startX), 0, 2, height)
+      ctx.fillRect(Math.floor(endX), 0, 2, height)
+    }
   }
 }
 
@@ -91,7 +115,17 @@ onUnmounted(() => {
 })
 
 watch(
-  () => [props.peaks, props.positionSeconds, props.durationSeconds] as const,
+  () =>
+    [
+      props.peaks,
+      props.positionSeconds,
+      props.durationSeconds,
+      props.cuePoint,
+      (props.hotCues ?? []).map((cue) => `${cue.id}:${cue.positionSeconds}`).join(','),
+      props.activeLoop
+        ? `${props.activeLoop.startSeconds}:${props.activeLoop.endSeconds}:${props.activeLoop.active}`
+        : '',
+    ] as const,
   () => {
     draw()
   },

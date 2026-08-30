@@ -12,6 +12,7 @@ const props = defineProps<{
   playing: boolean
   focused: boolean
   originalBpm?: number
+  effectiveBpm?: number
   analysisStatus: AnalysisStatus
 }>()
 
@@ -22,9 +23,11 @@ function bpmLabel(): string {
     case 'failed':
       return 'Analysis failed'
     case 'ready':
-      return props.originalBpm !== undefined
-        ? `${props.originalBpm.toFixed(2)} BPM`
-        : '— BPM'
+      return props.effectiveBpm !== undefined
+        ? `${props.effectiveBpm.toFixed(2)} BPM`
+        : props.originalBpm !== undefined
+          ? `${props.originalBpm.toFixed(2)} BPM`
+          : '— BPM'
     case 'idle':
       return '— BPM'
     default: {
@@ -50,6 +53,13 @@ function bpmLabel(): string {
       </p>
       <p class="mt-1 font-mono text-sm text-accent" data-testid="bpm">
         {{ bpmLabel() }}
+      </p>
+      <p
+        v-if="originalBpm !== undefined && effectiveBpm !== undefined && originalBpm !== effectiveBpm"
+        class="mt-0.5 font-mono text-[11px] text-muted"
+        data-testid="original-bpm"
+      >
+        {{ originalBpm.toFixed(2) }} orig
       </p>
     </div>
     <div class="font-mono text-right">

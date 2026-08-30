@@ -24,7 +24,21 @@ function mockDeck(deckId: DeckId, playing = false): DeckController {
     play: vi.fn(),
     pause: vi.fn(),
     cue: vi.fn(),
+    cueRelease: vi.fn(),
     seek: vi.fn(),
+    setTempoPercent: vi.fn(),
+    setTempoRange: vi.fn(),
+    setPitchBend: vi.fn(),
+    setMasterTempo: vi.fn(),
+    setQuantize: vi.fn(),
+    hotCue: vi.fn(),
+    clearHotCue: vi.fn(),
+    loopIn: vi.fn(),
+    loopOut: vi.fn(),
+    reloop: vi.fn(),
+    beatLoop: vi.fn(),
+    loopHalve: vi.fn(),
+    loopDouble: vi.fn(),
     getSnapshot: vi.fn(() => snapshot),
   }
 }
@@ -44,6 +58,10 @@ function createHarness(playing = false): {
     tryGetDeck: vi.fn(() => deck),
     getMixer: vi.fn(() => mixer),
     tryGetMixer: vi.fn(() => mixer),
+    setMasterDeck: vi.fn(),
+    setSync: vi.fn(),
+    ensureMaster: vi.fn(),
+    maintainSync: vi.fn(),
   }
 
   return { bus: new CommandBus(engine), engine, deck, mixer }
@@ -98,6 +116,10 @@ describe('CommandBus', () => {
       tryGetDeck: vi.fn((id: DeckId) => (id === 1 ? deck1 : deck2)),
       getMixer: vi.fn(() => mixer),
       tryGetMixer: vi.fn(() => mixer),
+      setMasterDeck: vi.fn(),
+      setSync: vi.fn(),
+      ensureMaster: vi.fn(),
+      maintainSync: vi.fn(),
     }
     const bus = new CommandBus(engine)
 
@@ -125,5 +147,102 @@ describe('CommandBus', () => {
     expect(mixer.setCrossfaderCurve).toHaveBeenCalledWith('sharp')
     expect(mixer.setMasterGain).toHaveBeenCalledWith(0.6)
     expect(deck.play).not.toHaveBeenCalled()
+  })
+
+  it('applies tempo commands to the deck without touching the mixer', async () => {
+    const { bus, deck, mixer } = createHarness()
+
+    await bus.dispatch({ type: 'SET_TEMPO', deck: 1, percent: 6 })
+    await bus.dispatch({ type: 'SET_TEMPO_RANGE', deck: 1, range: 16 })
+    await bus.dispatch({ type: 'PITCH_BEND_START', deck: 1, direction: 1 })
+    await bus.dispatch({ type: 'PITCH_BEND_END', deck: 1 })
+
+    expect(deck.setTempoPercent).toHaveBeenCalledWith(6)
+    expect(deck.setTempoRange).toHaveBeenCalledWith(16)
+    expect(deck.setPitchBend).toHaveBeenNthCalledWith(1, 1)
+    expect(deck.setPitchBend).toHaveBeenNthCalledWith(2, 0)
+    expect(mixer.setMasterGain).not.toHaveBeenCalled()
+  })
+
+  it('toggles master tempo on the deck', async () => {
+    const { bus, deck, mixer } = createHarness()
+
+    await bus.dispatch({ type: 'SET_MASTER_TEMPO', deck: 1, enabled: true })
+
+    expect(deck.setMasterTempo).toHaveBeenCalledWith(true)
+    expect(mixer.setMasterGain).not.toHaveBeenCalled()
+    expect(deck.play).not.toHaveBeenCalled()
+  })
+
+  it('assigns a master when a deck starts playing', async () => {
+    const { bus, engine } = createHarness()
+
+    await bus.dispatch({ type: 'DECK_PLAY', deck: 1 })
+
+    expect(engine.ensureMaster).toHaveBeenCalledWith(1)
+    expect(engine.maintainSync).toHaveBeenCalled()
+  })
+
+  it('does not assign a master when pausing', async () => {
+    const { bus, engine } = createHarness(true)
+
+    await bus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: 1 })
+
+    expect(engine.ensureMaster).not.toHaveBeenCalled()
+    expect(engine.maintainSync).toHaveBeenCalled()
+  })
+
+  it('routes sync and master-deck commands to the engine, not the deck controller', async () => {
+    const { bus, engine, deck } = createHarness()
+
+    await bus.dispatch({ type: 'SET_MASTER_DECK', deck: 1 })
+    await bus.dispatch({ type: 'SET_SYNC', deck: 2, enabled: true })
+
+    expect(engine.setMasterDeck).toHaveBeenCalledWith(1)
+    expect(engine.setSync).toHaveBeenCalledWith(2, true)
+    expect(deck.setTempoPercent).not.toHaveBeenCalled()
+  })
+
+  it('routes hot cue and quantize commands to the deck', async () => {
+    const { bus, deck } = createHarness()
+
+    await bus.dispatch({ type: 'SET_QUANTIZE', deck: 1, enabled: true })
+    await bus.dispatch({ type: 'HOT_CUE', deck: 1, id: 'A' })
+    await bus.dispatch({ type: 'CLEAR_HOT_CUE', deck: 1, id: 'B' })
+    await bus.dispatch({ type: 'DECK_CUE_RELEASE', deck: 1 })
+
+    expect(deck.setQuantize).toHaveBeenCalledWith(true)
+    expect(deck.hotCue).toHaveBeenCalledWith('A')
+    expect(deck.clearHotCue).toHaveBeenCalledWith('B')
+    expect(deck.cueRelease).toHaveBeenCalledOnce()
+  })
+
+  it('locks in playback when play is pressed during cue preview', async () => {
+    const { bus, deck, engine } = createHarness(true)
+    deck.getSnapshot().cuePreviewing = true
+
+    await bus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: 1 })
+
+    expect(deck.play).toHaveBeenCalledOnce()
+    expect(deck.pause).not.toHaveBeenCalled()
+    expect(engine.ensureMaster).toHaveBeenCalledWith(1)
+  })
+
+  it('routes loop commands to the deck', async () => {
+    const { bus, deck } = createHarness()
+
+    await bus.dispatch({ type: 'LOOP_IN', deck: 1 })
+    await bus.dispatch({ type: 'LOOP_OUT', deck: 1 })
+    await bus.dispatch({ type: 'BEAT_LOOP', deck: 1, beats: 4 })
+    await bus.dispatch({ type: 'LOOP_HALVE', deck: 1 })
+    await bus.dispatch({ type: 'LOOP_DOUBLE', deck: 1 })
+    await bus.dispatch({ type: 'LOOP_RELOOP', deck: 1 })
+
+    expect(deck.loopIn).toHaveBeenCalledOnce()
+    expect(deck.loopOut).toHaveBeenCalledOnce()
+    expect(deck.beatLoop).toHaveBeenCalledWith(4)
+    expect(deck.loopHalve).toHaveBeenCalledOnce()
+    expect(deck.loopDouble).toHaveBeenCalledOnce()
+    expect(deck.reloop).toHaveBeenCalledOnce()
   })
 })

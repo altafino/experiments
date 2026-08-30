@@ -18,6 +18,7 @@ export function startUiSync(
     if (stopped) {
       return
     }
+    engine.maintainSync()
     const deck1 = engine.tryGetDeck(1)
     if (deck1) {
       decks.applySnapshot(deck1.getSnapshot())

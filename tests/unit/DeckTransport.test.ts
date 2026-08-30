@@ -40,7 +40,7 @@ describe('DeckTransport', () => {
       name: 'applies playback rate to elapsed time',
       duration: 60,
       actions: (t: DeckTransport) => {
-        t.setPlaybackRate(2)
+        t.setPlaybackRate(2, 0)
         t.play(0)
         return t.getPosition(3)
       },
@@ -114,5 +114,35 @@ describe('DeckTransport', () => {
     expect(deck1.isPlaying()).toBe(true)
     expect(deck2.getPosition(5)).toBe(10)
     expect(deck2.isPlaying()).toBe(false)
+  })
+
+  it('re-anchors position when playback rate changes while playing', () => {
+    const transport = new DeckTransport()
+    transport.reset(60)
+    transport.play(0)
+    expect(transport.getPosition(4)).toBe(4)
+    transport.setPlaybackRate(2, 4)
+    expect(transport.getPosition(4)).toBe(4)
+    expect(transport.getPosition(6)).toBe(8)
+  })
+
+  it('stores a cue point without moving the playhead', () => {
+    const transport = new DeckTransport()
+    transport.reset(60)
+    transport.seek(9, 0)
+    transport.setCuePoint(4)
+    expect(transport.cuePoint()).toBe(4)
+    expect(transport.getPosition(0)).toBe(9)
+  })
+
+  it('wraps playhead inside an active loop region', () => {
+    const transport = new DeckTransport()
+    transport.reset(10)
+    transport.seek(2, 0)
+    transport.setLoop({ startSeconds: 2, endSeconds: 4 }, 0)
+    transport.play(0)
+    expect(transport.getPosition(1)).toBe(3)
+    expect(transport.getPosition(2)).toBe(2)
+    expect(transport.getPosition(5)).toBe(3)
   })
 })

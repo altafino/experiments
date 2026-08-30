@@ -1,10 +1,12 @@
 import { TrackAnalyzer } from '../analysis/TrackAnalyzer'
 import type { AudioEngineApi, DeckId } from '../commands/DJCommand'
 import type { Track } from '../domain/Track'
+import { fileAnalysisKey } from '../library/fileAnalysisKey'
 import { AudioClock } from './AudioClock'
 import { DeckEngine } from './deck/DeckEngine'
 import { MixerEngine } from './mixer/MixerEngine'
-import { fileAnalysisKey } from '../library/fileAnalysisKey'
+import { SyncEngine } from './sync/SyncEngine'
+import { STRETCH_WORKLET_URL } from './worklets/stretchWorklet'
 
 /**
  * Owns the AudioContext, decks, and mixer. Vue may not create or
@@ -15,6 +17,8 @@ export class AudioEngine implements AudioEngineApi {
   private deck1: DeckEngine | null = null
   private deck2: DeckEngine | null = null
   private mixer: MixerEngine | null = null
+  private sync: SyncEngine | null = null
+  private startPromise: Promise<void> | null = null
   private readonly analyzer: TrackAnalyzer
   private readonly analysisEpoch: { 1: number; 2: number } = { 1: 0, 2: 0 }
 
@@ -23,23 +27,39 @@ export class AudioEngine implements AudioEngineApi {
   }
 
   async ensureStarted(): Promise<void> {
-    if (!this.context) {
-      const context = new AudioContext()
-      const clock = new AudioClock(context)
-      const mixer = new MixerEngine(context, clock)
-      const deck1 = new DeckEngine(1, context, clock)
-      const deck2 = new DeckEngine(2, context, clock)
-      deck1.connect(mixer.input(1))
-      deck2.connect(mixer.input(2))
-      mixer.connect(context.destination)
-      this.context = context
-      this.mixer = mixer
-      this.deck1 = deck1
-      this.deck2 = deck2
+    if (!this.startPromise) {
+      // Concurrent load/play must share one graph; do not construct a second
+      // AudioContext while the worklet module is still loading.
+      this.startPromise = this.createGraph()
     }
-    if (this.context.state === 'suspended') {
-      await this.context.resume()
+    await this.startPromise
+    const context = this.requireContext()
+    if (context.state === 'suspended') {
+      await context.resume()
     }
+  }
+
+  private async createGraph(): Promise<void> {
+    const context = new AudioContext()
+    const clock = new AudioClock(context)
+    const mixer = new MixerEngine(context, clock)
+    const deck1 = new DeckEngine(1, context, clock)
+    const deck2 = new DeckEngine(2, context, clock)
+    deck1.connect(mixer.input(1))
+    deck2.connect(mixer.input(2))
+    mixer.connect(context.destination)
+    try {
+      await addWorkletModule(context, STRETCH_WORKLET_URL)
+      deck1.attachStretch()
+      deck2.attachStretch()
+    } catch {
+      // Master tempo falls back to playbackRate if the worklet cannot load.
+    }
+    this.context = context
+    this.mixer = mixer
+    this.deck1 = deck1
+    this.deck2 = deck2
+    this.sync = new SyncEngine(deck1, deck2)
   }
 
   async load(deck: DeckId, file: File): Promise<void> {
@@ -103,6 +123,24 @@ export class AudioEngine implements AudioEngineApi {
     return this.mixer ?? undefined
   }
 
+  setMasterDeck(deck: DeckId): void {
+    this.requireSync().setMaster(deck)
+  }
+
+  setSync(deck: DeckId, enabled: boolean): void {
+    this.requireSync().setSync(deck, enabled)
+  }
+
+  ensureMaster(deck: DeckId): void {
+    this.sync?.ensureMaster(deck)
+  }
+
+  maintainSync(): void {
+    this.deck1?.applyDueActions()
+    this.deck2?.applyDueActions()
+    this.sync?.follow()
+  }
+
   private async analyzeLoadedTrack(
     deck: DeckId,
     epoch: number,
@@ -137,4 +175,31 @@ export class AudioEngine implements AudioEngineApi {
     }
     return this.context
   }
+
+  private requireSync(): SyncEngine {
+    if (!this.sync) {
+      throw new Error('Audio engine is not started')
+    }
+    return this.sync
+  }
+}
+
+const WORKLET_LOAD_MS = 5_000
+
+function addWorkletModule(context: AudioContext, url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Audio worklet load timed out'))
+    }, WORKLET_LOAD_MS)
+    context.audioWorklet.addModule(url).then(
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 }

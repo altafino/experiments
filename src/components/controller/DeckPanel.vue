@@ -2,7 +2,10 @@
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { DeckId } from '../../commands/DJCommand'
+import TempoSlider from '../deck/TempoSlider.vue'
 import TransportControls from '../deck/TransportControls.vue'
+import HotCuePads from '../deck/HotCuePads.vue'
+import LoopControls from '../deck/LoopControls.vue'
 import DeckStatus from '../display/DeckStatus.vue'
 import Waveform from '../display/Waveform.vue'
 import { useCommandBus } from '../../io/keys'
@@ -57,8 +60,12 @@ async function togglePlay(): Promise<void> {
   await commandBus.dispatch({ type: 'DECK_TOGGLE_PLAY', deck: props.deckId })
 }
 
-async function cue(): Promise<void> {
+async function cuePress(): Promise<void> {
   await commandBus.dispatch({ type: 'DECK_CUE', deck: props.deckId })
+}
+
+async function cueRelease(): Promise<void> {
+  await commandBus.dispatch({ type: 'DECK_CUE_RELEASE', deck: props.deckId })
 }
 
 async function seek(position: number): Promise<void> {
@@ -90,6 +97,7 @@ async function onSlider(event: Event): Promise<void> {
         :cue-point="deck.cuePoint"
         :playing="deck.playing"
         :original-bpm="deck.originalBpm"
+        :effective-bpm="deck.effectiveBpm"
         :analysis-status="deck.analysisStatus"
         :focused="focused"
       />
@@ -110,34 +118,63 @@ async function onSlider(event: Event): Promise<void> {
       {{ loadError }}
     </p>
 
-    <div class="mt-6">
-      <Waveform
-        :peaks="deck.waveformPeaks"
-        :position-seconds="deck.positionSeconds"
-        :duration-seconds="deck.durationSeconds"
-        @seek="seek"
-      />
-      <input
-        data-testid="seek-slider"
-        class="mt-3 w-full accent-cue"
-        type="range"
-        min="0"
-        :max="deck.durationSeconds || 0"
-        step="0.01"
-        :value="deck.positionSeconds"
-        :disabled="deck.durationSeconds <= 0"
-        aria-label="Seek"
-        @input="onSlider"
+    <div class="mt-6 flex gap-4">
+      <div class="min-w-0 flex-1">
+        <Waveform
+          :peaks="deck.waveformPeaks"
+          :position-seconds="deck.positionSeconds"
+          :duration-seconds="deck.durationSeconds"
+          :cue-point="deck.cuePoint"
+          :hot-cues="deck.hotCues"
+          :active-loop="deck.activeLoop"
+          @seek="seek"
+        />
+        <input
+          data-testid="seek-slider"
+          class="mt-3 w-full accent-cue"
+          type="range"
+          min="0"
+          :max="deck.durationSeconds || 0"
+          step="0.01"
+          :value="deck.positionSeconds"
+          :disabled="deck.durationSeconds <= 0"
+          aria-label="Seek"
+          @input="onSlider"
+        />
+      </div>
+      <TempoSlider
+        :deck-id="deckId"
+        :percent="deck.tempoPercent"
+        :range="deck.tempoRange"
+        :pitch-bend="deck.pitchBend"
+        :master-tempo="deck.masterTempo"
+        :master-deck="deck.masterDeck"
+        :sync-enabled="deck.syncEnabled"
       />
     </div>
 
     <div class="mt-6 flex flex-wrap items-center justify-between gap-4">
-      <TransportControls
-        :playing="deck.playing"
-        :disabled="deck.durationSeconds <= 0 || loading"
-        @toggle-play="togglePlay"
-        @cue="cue"
-      />
+      <div class="flex flex-wrap items-center gap-4">
+        <TransportControls
+          :playing="deck.playing"
+          :disabled="deck.durationSeconds <= 0 || loading"
+          @toggle-play="togglePlay"
+          @cue-press="cuePress"
+          @cue-release="cueRelease"
+        />
+        <HotCuePads
+          :deck-id="deckId"
+          :hot-cues="deck.hotCues"
+          :quantize-enabled="deck.quantizeEnabled"
+          :disabled="deck.durationSeconds <= 0 || loading"
+        />
+        <LoopControls
+          :deck-id="deckId"
+          :loop-in-seconds="deck.loopInSeconds"
+          :active-loop="deck.activeLoop"
+          :disabled="deck.durationSeconds <= 0 || loading"
+        />
+      </div>
       <p class="text-xs text-muted">
         {{ focused ? 'Keyboard target' : 'Click to focus' }}
       </p>

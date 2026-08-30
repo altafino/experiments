@@ -23,8 +23,8 @@ build.
 Implement the engineering roadmap in dependency order rather than trying to
 build the entire controller simultaneously.
 
-Current implementation phase: Phase 6 (tempo).
-Do not implement sync, loops, effects, scratching, headphone cue, or MIDI
-until the corresponding phase. Tempo starts with playbackRate. Do not
-introduce AudioWorklet time stretching until Phase 7. Analysis remains
+Current implementation phase: Phase 11 (slip).
+Do not implement effects, scratching, headphone cue, or MIDI
+until the corresponding phase. Sync orchestrates on AudioEngine; do not
+change the public DeckEngine command surface for sync. Analysis remains
 worker-only; do not store audio files in IndexedDB.

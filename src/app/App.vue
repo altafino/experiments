@@ -8,10 +8,11 @@ import MixerPanel from '../components/mixer/MixerPanel.vue'
     <header class="mx-auto mb-8 flex max-w-7xl items-baseline justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold tracking-wide">Web DJ</h1>
-        <p class="mt-1 text-sm text-muted">Phase 5 — track analysis</p>
+        <p class="mt-1 text-sm text-muted">Phase 10 — loops</p>
       </div>
       <p class="text-xs text-muted">
-        1 / 2 focus · Space play/pause · C cue · ← → seek 1s · double-click knobs to reset
+        1 / 2 focus · Space play/pause · C cue · Q W E hot cues · I/O/L loop · , . half/double · T
+        quantize · ← → seek · [ ] pitch bend · M master tempo · S sync · G master deck
       </p>
     </header>
     <main

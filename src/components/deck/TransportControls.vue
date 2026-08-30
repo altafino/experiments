@@ -6,8 +6,17 @@ defineProps<{
 
 const emit = defineEmits<{
   togglePlay: []
-  cue: []
+  cuePress: []
+  cueRelease: []
 }>()
+
+function startCue(event: PointerEvent): void {
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    target.setPointerCapture(event.pointerId)
+  }
+  emit('cuePress')
+}
 </script>
 
 <template>
@@ -26,7 +35,9 @@ const emit = defineEmits<{
       data-testid="cue"
       class="rounded-md bg-cue px-5 py-2 font-semibold text-surface disabled:opacity-40"
       :disabled="disabled"
-      @click="emit('cue')"
+      @pointerdown.prevent="startCue"
+      @pointerup.prevent="emit('cueRelease')"
+      @pointercancel.prevent="emit('cueRelease')"
     >
       Cue
     </button>

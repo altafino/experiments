@@ -1,3 +1,4 @@
+import { wrapIntoLoop, type LoopRegion } from '../../domain/loop'
 import { clamp } from '../../domain/timecode'
 
 export type CueAction = 'set' | 'return' | 'none'
@@ -14,6 +15,8 @@ export class DeckTransport {
   private startPositionSeconds = 0
   private cuePointSeconds = 0
   private playbackRate = 1
+  private loopStart: number | null = null
+  private loopEnd: number | null = null
 
   reset(durationSeconds: number): void {
     this.playing = false
@@ -22,6 +25,8 @@ export class DeckTransport {
     this.startPositionSeconds = 0
     this.cuePointSeconds = 0
     this.playbackRate = 1
+    this.loopStart = null
+    this.loopEnd = null
   }
 
   isPlaying(): boolean {
@@ -36,12 +41,40 @@ export class DeckTransport {
     return this.cuePointSeconds
   }
 
+  setCuePoint(positionSeconds: number): void {
+    this.cuePointSeconds = clamp(positionSeconds, 0, this.durationSeconds)
+  }
+
   rate(): number {
     return this.playbackRate
   }
 
-  setPlaybackRate(rate: number): void {
-    this.playbackRate = rate > 0 ? rate : 1
+  setPlaybackRate(rate: number, now: number): void {
+    const next = rate > 0 ? rate : 1
+    if (this.playing) {
+      this.startPositionSeconds = this.getPosition(now)
+      this.startContextTime = now
+    }
+    this.playbackRate = next
+  }
+
+  setLoop(region: LoopRegion | undefined, now: number): void {
+    const current = this.getPosition(now)
+    if (region && region.endSeconds > region.startSeconds) {
+      this.loopStart = region.startSeconds
+      this.loopEnd = region.endSeconds
+      if (this.playing) {
+        this.startPositionSeconds = wrapIntoLoop(current, region.startSeconds, region.endSeconds)
+        this.startContextTime = now
+      }
+      return
+    }
+    this.loopStart = null
+    this.loopEnd = null
+    if (this.playing) {
+      this.startPositionSeconds = current
+      this.startContextTime = now
+    }
   }
 
   getPosition(now: number): number {
@@ -49,7 +82,11 @@ export class DeckTransport {
       return this.startPositionSeconds
     }
     const elapsed = (now - this.startContextTime) * this.playbackRate
-    return clamp(this.startPositionSeconds + elapsed, 0, this.durationSeconds)
+    const raw = this.startPositionSeconds + elapsed
+    if (this.loopStart !== null && this.loopEnd !== null) {
+      return wrapIntoLoop(raw, this.loopStart, this.loopEnd)
+    }
+    return clamp(raw, 0, this.durationSeconds)
   }
 
   play(now: number): boolean {
