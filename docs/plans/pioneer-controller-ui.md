@@ -128,6 +128,8 @@ Pass 6 score: 2/10 → 9/10.
 
 Decision 11A: 8 pads + HOT CUE / LOOP / JUMP switch (display-only in `view.store.ts`). Keyboard and MIDI still dispatch the same commands.
 
+Eng decision (2026-08-30): T5 one-deck stage is display-only. Hiding a platter must not dispatch pause/load. Both decks keep their transport. Focus keys 1/2 still choose which platter is large. Same bucket as `view.store.ts` line 15 ("Never consulted by the audio engine").
+
 Pass 7: pad bank resolved. Remaining open: none that block this plan.
 
 ## Approved Mockups
@@ -168,6 +170,42 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: Pass 1 header kill
   - Files: `src/app/App.vue`, `src/components/controller/MidiPanel.vue` or SETTINGS pane
   - Verify: e2e SETTINGS shows keyboard list; header gone
+- [ ] **T8 (P2, human: ~1h / CC: ~15min)** — Skip `ScrollingWaveform` draw when the canvas is not visible (Browse/Info/Settings or off-stage deck)
+  - Surfaced by: Eng performance — rAF snapshots still trigger watch/draw on `v-show` hidden canvases
+  - Files: `src/components/display/ScrollingWaveform.vue`
+  - Verify: unit or component test that draw is not called while hidden; no audio change
+
+## Eng review additions
+
+- One-deck stage is CSS/`view.store` only. Never dispatch pause when a platter is hidden.
+- Pad banks: wrap existing `HotCuePads` / `LoopControls` / `BeatJumpPads` in `PadBank.vue`. Do not merge click handlers.
+- IBM Plex: vendor woff2 + `@font-face`. No npm font package, no CDN.
+- Tests (full matrix):
+  - Unit: pad bank in `view.store.ts`
+  - E2E: LOAD on empty platter
+  - E2E: 1440×900 `document.scrollingElement.scrollHeight === clientHeight` (no page scroll)
+  - E2E: 390px focused platter visible, peer strip visible, both decks can still be playing
+  - Keep existing smoke tests; they are regressions for command behavior
+- Hidden waveform: skip canvas draw when not visible. Keep `v-show` so returning to PERFORM does not rebuild GL/canvas.
+
+```
+CODE PATHS                                              USER FLOWS
+[+] view.store padBank                                  [+] Mix on 1440 chassis
+  ├── [GAP] setPadBank hotcue/loop/jump                   ├── [GAP] [→E2E] no document scroll
+  └── [GAP] default hotcue                                ├── [★★ TESTED] play/cue/loop/jump — smoke.spec.ts
+[+] JogWheel LOAD/error                                 [+] Empty / error
+  ├── [GAP] [→E2E] click LOAD → file                      ├── [GAP] [→E2E] LOAD visible
+  └── [GAP] [→E2E] bad file → amber                       └── [GAP] [→E2E] decode error on platter
+[+] ScrollingWaveform hidden                            [+] Browse while playing
+  └── [GAP] skip draw when not visible                      ├── [★★ TESTED] browse tab — smoke.spec.ts
+[+] App.vue breakpoints                                     └── [GAP] canvases must not hitch CPU
+  ├── [GAP] [→E2E] 1280 compact
+  └── [GAP] [→E2E] 390 one-deck stage
+
+COVERAGE today: existing smoke only (command paths). Layout GAPS: 8 (7 E2E, 1 unit).
+```
+
+Scope: T1–T7 in one PR (user 2026-08-30). T8 added by eng review.
 
 ## NOT in scope
 
@@ -184,12 +222,12 @@ Synthesized from this review's findings. Each task derives from a specific findi
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | Codex CLI not installed; in-session second pass only |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR (PLAN) | 5 issues, 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR (FULL) | score: 3/10 → 9/10, 11 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **VERDICT:** DESIGN CLEARED (FULL) — chassis plan ready to implement. eng review required before ship.
+- **VERDICT:** DESIGN + ENG CLEARED — ready to implement T1–T8.
 
 NO UNRESOLVED DECISIONS
 
