@@ -16,6 +16,10 @@ async function openDisplayMode(
   await page.getByTestId(`display-mode-${mode}`).click()
 }
 
+async function selectPadBank(page: Page, bank: 'hotcue' | 'loop' | 'jump'): Promise<void> {
+  await deck(page, 1).getByTestId(`pad-bank-${bank}`).click()
+}
+
 function positionSeconds(text: string): number {
   const match = /(\d{2}):(\d{2})\.(\d)/.exec(text)
   if (!match) {
@@ -49,8 +53,10 @@ test('dual deck shell is visible', async ({ page }) => {
   await expect(page.getByTestId('record')).toBeVisible()
   await expect(deck(page, 1).getByTestId('hot-cue-A')).toBeVisible()
   await expect(deck(page, 1).getByTestId('quantize')).toBeVisible()
+  await selectPadBank(page, 'loop')
   await expect(deck(page, 1).getByTestId('loop-in')).toBeVisible()
   await expect(deck(page, 1).getByTestId('loop-beat-4')).toBeVisible()
+  await selectPadBank(page, 'jump')
   await expect(deck(page, 1).getByTestId('beat-jump-p1')).toBeVisible()
   await expect(page.getByTestId('main-display')).toBeVisible()
   await expect(page.getByTestId('main-display-1')).toBeVisible()
@@ -59,6 +65,7 @@ test('dual deck shell is visible', async ({ page }) => {
   await expect(deck(page, 1).getByTestId('slip')).toBeVisible()
   await expect(deck(page, 1).getByTestId('jog')).toBeVisible()
   await expect(deck(page, 1).getByTestId('vinyl')).toBeVisible()
+  await expect(deck(page, 1).getByTestId('platter-load')).toBeVisible()
 })
 
 test('main display switches between performance, browse, info and settings', async ({ page }) => {
@@ -80,6 +87,7 @@ test('main display switches between performance, browse, info and settings', asy
   await openDisplayMode(page, 'settings')
   await expect(page.getByTestId('midi')).toBeVisible()
   await expect(page.getByTestId('midi-connect')).toBeVisible()
+  await expect(page.getByTestId('keyboard-help')).toBeVisible()
 
   await openDisplayMode(page, 'performance')
   await expect(page.getByTestId('scrolling-waveform-1')).toBeVisible()
@@ -572,6 +580,7 @@ test('beat loop keeps the playhead inside one beat', async ({ page }) => {
   await page.goto('/')
   await left.getByTestId('load-input').setInputFiles(wavPath)
   await expect(left.getByTestId('bpm')).toHaveText(/12[0-2]\.\d{2} BPM/, { timeout: 15_000 })
+  await selectPadBank(page, 'loop')
   await left.getByTestId('loop-beat-1').click()
   await expect(left.getByTestId('play-pause')).toHaveText('Pause')
   await expect(left.getByTestId('reloop')).toHaveAttribute('aria-pressed', 'true')
@@ -597,6 +606,7 @@ test('beat jump advances four beats without starting deck 2', async ({ page }) =
   await left.getByTestId('load-input').setInputFiles(wavPath)
   await expect(left.getByTestId('bpm')).toHaveText(/12[0-2]\.\d{2} BPM/, { timeout: 15_000 })
   await expect(page.getByTestId('main-display-1')).toBeVisible()
+  await selectPadBank(page, 'jump')
   await left.getByTestId('beat-jump-p4').click()
   await expect.poll(async () => positionSeconds(await left.getByTestId('position').innerText())).toBeGreaterThan(1.8)
   await expect.poll(async () => positionSeconds(await left.getByTestId('position').innerText())).toBeLessThan(2.2)
@@ -613,6 +623,7 @@ test('loop in and out confine playback to the stored region', async ({ page }) =
   await left.getByTestId('load-input').setInputFiles(wavPath)
   await expect(left.getByTestId('play-pause')).toBeEnabled()
 
+  await selectPadBank(page, 'loop')
   await left.getByTestId('seek-slider').evaluate((el) => {
     const input = el as HTMLInputElement
     input.value = '1'
@@ -651,6 +662,7 @@ test('slip loop jumps to the background timeline on exit', async ({ page }) => {
   await expect(left.getByTestId('bpm')).toHaveText(/12[0-2]\.\d{2} BPM/, { timeout: 15_000 })
   await left.getByTestId('slip').click()
   await expect(left.getByTestId('slip')).toHaveAttribute('aria-pressed', 'true')
+  await selectPadBank(page, 'loop')
   await left.getByTestId('loop-beat-1').click()
   await expect(left.getByTestId('play-pause')).toHaveText('Pause')
   await expect(left.getByTestId('reloop')).toHaveAttribute('aria-pressed', 'true')
@@ -694,4 +706,61 @@ test('vinyl jog scratch moves the playhead without starting deck 2', async ({ pa
 
   await expect.poll(async () => positionSeconds(await left.getByTestId('position').innerText())).toBeGreaterThan(0.2)
   await expect(deck(page, 2).getByTestId('play-pause')).toHaveText('Play')
+})
+
+test('decode error stays on the platter', async ({ page }) => {
+  const badPath = path.join(tmpdir(), 'web-dj-bad.wav')
+  writeFileSync(badPath, 'not a wav')
+
+  await page.goto('/')
+  await expect(deck(page, 1).getByTestId('platter-load')).toBeVisible()
+  await deck(page, 1).getByTestId('load-input').setInputFiles(badPath)
+  await expect(deck(page, 1).getByTestId('load-error')).toBeVisible()
+  await expect(deck(page, 1).getByTestId('platter-load')).toBeVisible()
+  await expect(deck(page, 2).getByTestId('platter-load')).toBeVisible()
+})
+
+test('chassis does not scroll the document at 1440', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await expect(deck(page, 1).getByTestId('jog')).toBeVisible()
+  await expect(deck(page, 2).getByTestId('jog')).toBeVisible()
+  const box1 = await page.getByTestId('scrolling-waveform-1').boundingBox()
+  const box2 = await page.getByTestId('scrolling-waveform-2').boundingBox()
+  expect(box1).toBeTruthy()
+  expect(box2).toBeTruthy()
+  expect(box1!.x).toBeLessThan(box2!.x)
+  const noScroll = await page.evaluate(() => {
+    const root = document.scrollingElement
+    return root !== null && root.scrollHeight <= root.clientHeight + 1
+  })
+  expect(noScroll).toBe(true)
+})
+
+test('narrow viewport stages the focused deck without pausing the peer', async ({ page }) => {
+  const wavPath = path.join(tmpdir(), 'web-dj-narrow.wav')
+  writeFileSync(wavPath, encodeSineWav(4))
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(deck(page, 1).getByTestId('jog')).toBeVisible()
+  await expect(deck(page, 2).getByTestId('jog')).toBeHidden()
+  await expect(deck(page, 2).getByTestId('strip-title')).toBeVisible()
+  await expect(deck(page, 2).getByTestId('play-pause')).toBeVisible()
+
+  await deck(page, 1).getByTestId('load-input').setInputFiles(wavPath)
+  await deck(page, 2).getByTestId('load-input').setInputFiles(wavPath)
+  await expect(deck(page, 1).getByTestId('play-pause')).toBeEnabled()
+  await expect(deck(page, 2).getByTestId('play-pause')).toBeEnabled()
+  await deck(page, 1).getByTestId('play-pause').click()
+  await deck(page, 2).getByTestId('play-pause').click()
+  await expect(deck(page, 1).getByTestId('play-pause')).toHaveText('Pause')
+  await expect(deck(page, 2).getByTestId('play-pause')).toHaveText('Pause')
+
+  await deck(page, 2).click()
+  await expect(deck(page, 2).getByTestId('jog')).toBeVisible()
+  await expect(deck(page, 1).getByTestId('jog')).toBeHidden()
+  await expect(deck(page, 1).getByTestId('strip-title')).toBeVisible()
+  await expect(deck(page, 1).getByTestId('play-pause')).toHaveText('Pause')
+  await expect(deck(page, 2).getByTestId('play-pause')).toHaveText('Pause')
 })

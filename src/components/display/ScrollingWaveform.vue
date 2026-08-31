@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { HotCue, Loop } from '../../domain/DeckState'
 import { hotCueColor } from '../../domain/quantize'
 import type { BeatGrid, WaveformLevel } from '../../domain/Track'
@@ -8,6 +8,7 @@ import {
   bucketSeconds,
   peakBetween,
   selectPeakLevel,
+  shouldPaintWaveform,
   waveformWindow,
 } from '../../domain/waveformView'
 import type { DeckTheme } from './deckTheme'
@@ -25,6 +26,7 @@ const props = defineProps<{
   hotCues?: HotCue[]
   activeLoop?: Loop
   logicalPositionSeconds?: number
+  displayActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -33,10 +35,21 @@ const emit = defineEmits<{
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
+const displayActive = computed(() => props.displayActive !== false)
+const intersecting = ref(true)
 let resizeObserver: ResizeObserver | undefined
+let intersectionObserver: IntersectionObserver | undefined
 let scrubOriginX = 0
 let scrubOriginSeconds = 0
 let scrubbing = false
+
+function paint(): void {
+  if (!shouldPaintWaveform(displayActive.value, intersecting.value)) {
+    return
+  }
+  draw()
+}
 
 function marker(ctx: CanvasRenderingContext2D, x: number, height: number, color: string): void {
   ctx.fillStyle = color
@@ -187,22 +200,32 @@ function onWheel(event: WheelEvent): void {
 }
 
 onMounted(() => {
-  draw()
+  paint()
   if (canvasRef.value) {
     resizeObserver = new ResizeObserver(() => {
-      draw()
+      paint()
     })
     resizeObserver.observe(canvasRef.value)
+  }
+  if (rootRef.value && typeof IntersectionObserver !== 'undefined') {
+    intersectionObserver = new IntersectionObserver((entries) => {
+      intersecting.value = entries.some((entry) => entry.isIntersecting)
+      paint()
+    })
+    intersectionObserver.observe(rootRef.value)
   }
 })
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
+  intersectionObserver?.disconnect()
 })
 
 watch(
   () =>
     [
+      displayActive.value,
+      intersecting.value,
       props.peaks,
       props.levels,
       props.beatGrid,
@@ -217,17 +240,17 @@ watch(
       props.logicalPositionSeconds,
     ] as const,
   () => {
-    draw()
+    paint()
   },
 )
 </script>
 
 <template>
-  <div class="relative">
+  <div ref="rootRef" class="relative min-h-0 flex-1">
     <canvas
       ref="canvasRef"
       :data-testid="testId"
-      class="h-24 w-full cursor-ew-resize touch-none rounded-md select-none sm:h-28"
+      class="h-full min-h-20 w-full cursor-ew-resize touch-none select-none"
       role="slider"
       :aria-valuemin="0"
       :aria-valuemax="durationSeconds"

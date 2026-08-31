@@ -147,7 +147,7 @@ function sortLabel(sort: LibrarySort): string {
 <template>
   <section
     data-testid="library"
-    class="rounded-xl border border-panel-border bg-panel p-5 shadow-xl"
+    class="border border-panel-border bg-panel p-3"
   >
     <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-xs tracking-[0.2em] text-muted uppercase">Library</h2>

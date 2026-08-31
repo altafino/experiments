@@ -41,39 +41,34 @@ function bpmLabel(): string {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-end justify-between gap-4">
-    <div>
-      <p class="text-xs tracking-[0.2em] uppercase" :class="focused ? 'text-accent' : 'text-muted'">
+  <div class="flex min-w-0 items-end justify-between gap-2">
+    <div class="min-w-0">
+      <p class="text-[10px] tracking-[0.2em] uppercase" :class="focused ? 'text-accent' : 'text-muted'">
         Deck {{ deckId }}
       </p>
-      <h2 class="mt-1 text-lg font-semibold text-ink" data-testid="track-title">
+      <p class="mt-0.5 truncate text-sm font-medium text-ink" data-testid="track-title">
         {{ trackTitle ?? 'No track loaded' }}
-      </h2>
-      <p class="mt-1 text-sm text-muted">
-        {{ playing ? 'Playing' : 'Paused' }}
-        <span class="text-cue"> · Cue {{ formatTimecode(cuePoint ?? 0) }}</span>
-        <span v-if="slipActive" class="text-accent" data-testid="logical-position">
-          · Slip {{ formatTimecode(logicalPositionSeconds ?? positionSeconds) }}
-        </span>
       </p>
-      <p class="mt-1 font-mono text-sm text-accent" data-testid="bpm">
+      <p class="mt-0.5 font-mono text-[12px] text-accent" data-testid="bpm">
         {{ bpmLabel() }}
       </p>
       <p
         v-if="originalBpm !== undefined && effectiveBpm !== undefined && originalBpm !== effectiveBpm"
-        class="mt-0.5 font-mono text-[11px] text-muted"
+        class="font-mono text-[10px] text-muted"
         data-testid="original-bpm"
       >
         {{ originalBpm.toFixed(2) }} orig
       </p>
+      <p v-if="slipActive" class="text-[10px] text-accent" data-testid="logical-position">
+        Slip {{ formatTimecode(logicalPositionSeconds ?? positionSeconds) }}
+      </p>
     </div>
-    <div class="font-mono text-right">
-      <p class="text-2xl text-accent" data-testid="position">
+    <div class="shrink-0 text-right font-mono">
+      <p class="text-lg text-accent" data-testid="position">
         {{ formatTimecode(positionSeconds) }}
       </p>
-      <p class="text-sm text-muted" data-testid="remaining">
+      <p class="text-[11px] text-muted" data-testid="remaining">
         {{ formatTimecode(Math.max(0, durationSeconds - positionSeconds), true) }}
-        <span class="text-muted"> / {{ formatTimecode(durationSeconds) }}</span>
       </p>
     </div>
   </div>

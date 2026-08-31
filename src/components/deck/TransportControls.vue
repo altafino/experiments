@@ -20,11 +20,11 @@ function startCue(event: PointerEvent): void {
 </script>
 
 <template>
-  <div class="flex gap-3">
+  <div class="flex gap-2" data-testid="transport" @pointerdown.stop>
     <button
       type="button"
       data-testid="play-pause"
-      class="rounded-md bg-accent px-5 py-2 font-semibold text-surface disabled:opacity-40"
+      class="min-h-11 min-w-11 rounded-sm bg-accent px-4 text-sm font-medium text-surface disabled:opacity-40"
       :disabled="disabled"
       @click="emit('togglePlay')"
     >
@@ -33,7 +33,7 @@ function startCue(event: PointerEvent): void {
     <button
       type="button"
       data-testid="cue"
-      class="rounded-md bg-cue px-5 py-2 font-semibold text-surface disabled:opacity-40"
+      class="min-h-11 min-w-11 rounded-sm bg-cue px-4 text-sm font-medium text-surface disabled:opacity-40"
       :disabled="disabled"
       @pointerdown.prevent="startCue"
       @pointerup.prevent="emit('cueRelease')"

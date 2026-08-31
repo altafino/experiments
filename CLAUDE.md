@@ -23,10 +23,10 @@ build.
 Implement the engineering roadmap in dependency order rather than trying to
 build the entire controller simultaneously.
 
-Current implementation phase: Phase 20 (controller UI: zoomed scrolling
-waveform with beat grid, tabbed main display).
-Display state (mode, zoom) lives in `view.store.ts` and must never influence
-audio timing.
+Current implementation phase: Phase 21 (Pioneer-style chassis: LCD waveforms,
+pad banks, LOAD platter, responsive one-deck stage).
+Display state (mode, zoom, pad bank) lives in `view.store.ts` and must never
+influence audio timing.
 Sync orchestrates on AudioEngine; do not
 change the public DeckEngine command surface for sync. Analysis remains
 worker-only; do not store audio files in IndexedDB.

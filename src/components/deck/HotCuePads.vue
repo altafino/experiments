@@ -59,7 +59,7 @@ async function toggleQuantize(): Promise<void> {
       type="button"
       :data-testid="hotCueTestId(id)"
       :data-position="cueAt(id)?.positionSeconds.toFixed(2)"
-      class="min-w-10 rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-40"
+      class="min-w-11 min-h-11 rounded-md px-3 py-2 text-sm font-semibold disabled:opacity-40"
       :class="
         cueAt(id)
           ? 'text-surface'

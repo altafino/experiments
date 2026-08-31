@@ -53,7 +53,7 @@ async function toggleRecord(): Promise<void> {
 <template>
   <section
     data-testid="mixer"
-    class="flex min-w-[26rem] flex-col gap-5 rounded-xl border border-panel-border bg-panel p-5 shadow-xl"
+    class="flex min-h-0 flex-col gap-4 border border-panel-border bg-panel p-3"
   >
     <header class="flex items-center justify-between gap-3">
       <h2 class="text-xs tracking-[0.2em] text-muted uppercase">Mixer</h2>
