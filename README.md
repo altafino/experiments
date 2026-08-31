@@ -1,85 +1,118 @@
 # Web DJ
 
-Browser-based two-deck DJ workstation. Phase 20: dual decks, mixer, worker analysis, tempo, master tempo, beat sync, cue, hot cues, loops, beat jump, slip, jog/scratch, Sound Color FX, Beat FX, headphone cue, library, mix recording, generic Web MIDI, and a controller display with zoomed scrolling waveforms.
+A two-deck DJ workstation that runs in the browser. Load local audio, beat-match on zoomed waveforms, mix with EQ and FX, then record the master bus — without installing a native app.
 
-## Architecture
+Vue never owns the clock. Playback position comes from `AudioContext.currentTime`. Sample-critical work runs in AudioWorklets; BPM and waveform analysis run in a Web Worker.
 
-UI (Vue) emits `DJCommand` values. The command bus talks to `AudioEngine` / `DeckEngine` / `MixerEngine`. Playback position is derived from `AudioContext.currentTime`, never from `setInterval` or Vue.
+![PERFORM view with two zoomed waveforms, mixer, and both decks](docs/screenshots/perform.png)
 
-Track analysis (waveform peaks, BPM, beat grid) runs in a Web Worker and is cached in IndexedDB by file identity. Audio files themselves are not stored.
+<p align="center"><em>PERFORM — cyan deck 1, magenta deck 2, mixer in the centre.</em></p>
 
-Tempo uses `AudioBufferSourceNode.playbackRate` (speed and pitch together). Master tempo (MT) keeps pitch via a granular overlap-add AudioWorklet. SYNC matches a slave deck's effective BPM and beat phase to the master by adjusting tempo — it never seeks the slave.
+## Features
 
-Memory cue: while paused away from the cue, CUE stores the point; while playing, CUE returns and pauses; hold CUE at the cue point to preview. Hot cues A/B/C jump and play. Quantize snaps set positions to the beat grid and delays a playing hot-cue jump until the next beat.
+- **Two identical decks** — play, cue, tempo, sync, hot cues, loops, beat jump, slip, vinyl scratch
+- **Controller display** — PERFORM, BROWSE, INFO, and SETTINGS share one screen above the hardware
+- **Zoomed waveforms** — playhead stays centred; wheel to zoom 1–32 s; drag to scrub
+- **Mixer** — 3-band EQ, channel faders, crossfader curves, Sound Color FX, Beat FX
+- **Headphones** — pre-fader cue, cue/master mix, phones level (on one output, Cue Mix *is* what you hear)
+- **Library** — import, search, sort, playlists (audio files are never stored)
+- **Recording** — master-bus WebM/Opus download
+- **MIDI** — generic Web MIDI map plus Learn (not a Pioneer XDJ/DDJ map)
 
-Loops wrap in transport math and in the audio graph (`AudioBufferSourceNode.loop` / stretch-worklet read-head wrap). Loop In / Out set a region; Reloop toggles it; beat loops (1/32–32) engage immediately. Halve and double keep the in point and move the out point.
+## Quick start
 
-Slip keeps a background (logical) playhead running while a loop or held hot cue changes what you hear. Exiting the loop or releasing the pad jumps audible playback to that background position. Turning slip off discards the background clock without jumping.
-
-Vinyl mode: touching the jog platter takes sample-accurate control of the playhead (scratch, including reverse) in the stretch AudioWorklet. Release coasts briefly from pointer velocity, then resumes transport. CDJ mode (vinyl off): spinning the platter is a momentary pitch bend, same as `[` / `]`.
-
-Sound Color FX sits after the channel EQ and before the fader. Each channel has a bipolar COLOR knob (center = off) and a selector: Filter (LPF/HPF), Noise, Dub Echo (fixed ~140 ms, not beat-synced), and Pitch (channel pitch shifter, not deck tempo). Pitch DSP runs in an AudioWorklet.
-
-Beat FX is a master-bus insert after the crossfader: Echo, Reverb, and Flanger. Delay and LFO times follow the master deck's effective BPM and a beat fraction (1/16–8). LEVEL/DEPTH sets wet/feedback. Timing uses `AudioContext.currentTime` ramps, not `setInterval`.
-
-Headphone cue is pre-fader listen (after Color FX, before the channel fader). Channel CUE buttons feed a cue bus; Cue Mix blends that bus with the master (0 = cue, 1 = master, equal-power). Phones Level scales the blend. On a single output device the phones mix is what you hear (Cue Mix defaults to master so program stays unchanged until you pull it toward cue).
-
-The library is a session collection plus persisted metadata/playlists in IndexedDB. Import local files (multiple); audio blobs are never stored. Search, sort, artist and BPM filters, and playlists sit in front of load-to-deck commands. After a refresh, re-import the same files to make rows playable again.
-
-Recording taps the master bus (after Beat FX and master gain), not the phones mix. MediaRecorder writes WebM/Opus. Rec / R starts and stops; stop downloads the take.
-
-MIDI uses the Web MIDI API. `MidiManager` owns ports; `MidiMapper` turns notes/CCs into the same `DJCommand` values as the on-screen controls. The default map is generic (channel 1 = deck 1, channel 2 = deck 2, channel 16 = mixer) — not a Pioneer XDJ/DDJ map. Learn replaces a binding; maps persist in IndexedDB. Vue never handles MIDI bytes.
-
-Beat jump skips ±1–32 beats on the track grid (`position + beats × 60 / BPM`). Quantize delays a playing jump until the next beat, same as hot cues. J / K skip one beat on the focused deck.
-
-The main display is the controller's screen: PERFORM, BROWSE, INFO and SETTINGS states share one panel above the decks, so the browser and MIDI settings no longer push the controls off screen.
-
-PERFORM stacks a zoomed scrolling waveform per deck (playhead fixed at the centre, beat grid with accented downbeats, played audio dimmed) over a full-track overview strip. The zoomed view picks the coarsest multi-resolution peak level that still resolves one bucket per pixel; the analysis worker already emits levels at 64/256/1024/4096 samples per bucket. Drag a scrolling waveform to scrub, wheel over it to zoom (1–32 s visible). Display mode and zoom live in `view.store.ts` — display-only state that the engines never read.
-
-## Scripts
+Needs a Chromium-based browser (AudioWorklet, Web MIDI).
 
 ```bash
 npm install
 npm run dev
-npm run typecheck
-npm run test
-npm run build
-npm run test:e2e
 ```
+
+Open the printed localhost URL, click **Load track** on deck 1, then **Play**.
+
+First mix, keyboard, and MIDI walkthrough: **[TUTORIAL.md](TUTORIAL.md)**.  
+What shipped, and when: **[CHANGELOG.md](CHANGELOG.md)**.
+
+## Display
+
+The LCD sits above the decks so browsing a library or opening MIDI settings never unmounts the mixer.
+
+| PERFORM | BROWSE |
+| --- | --- |
+| ![Zoomed scrolling waveforms](docs/screenshots/perform-viewport.png) | ![Library browser](docs/screenshots/browse.png) |
+| Playhead-centred waveforms and beat grid. | Import, search, playlists, load to deck 1 or 2. |
+
+| INFO | SETTINGS |
+| --- | --- |
+| ![Deck info panels](docs/screenshots/info.png) | ![MIDI settings](docs/screenshots/settings.png) |
+| BPM, tempo, sync, loop, and remaining time. | Enable MIDI, Learn, restore the generic map. |
+
+Empty platters look like this before a load:
+
+![Empty PERFORM view](docs/screenshots/perform-empty.png)
 
 ## Keyboard
 
-- 1 / 2 — focus deck
-- Space — play / pause focused deck
-- C — cue (hold at the cue point to preview)
-- H — toggle channel cue (headphones) on the focused deck
-- R — start / stop mix recording
-- Q / W / E — hot cues A / B / C (Shift clears)
-- T — quantize
-- I / O — loop in / out
-- L — reloop / exit
-- Y — slip
-- V — vinyl / CDJ jog
-- F — cycle color FX on the focused deck
-- B — toggle Beat FX
-- N — cycle Beat FX type
-- , / . — loop half / double
-- J / K — beat jump −1 / +1
-- ← / → — seek 1 second
-- [ / ] — pitch bend down / up (hold)
-- M — master tempo
-- S — sync focused deck to the master
-- G — make focused deck the master
+Focus a deck with **1** / **2** (cyan ring = keyboard target). Keys do nothing in text fields.
+
+| Key | Action |
+| --- | --- |
+| `1` / `2` | Focus deck |
+| `Space` | Play / pause |
+| `C` | Cue (hold at the cue point to preview) |
+| `H` | Channel cue (headphones) |
+| `R` | Start / stop mix recording |
+| `Q` `W` `E` | Hot cues A / B / C (`Shift` clears) |
+| `T` | Quantize |
+| `I` / `O` / `L` | Loop in / out / reloop |
+| `,` / `.` | Loop half / double |
+| `J` / `K` | Beat jump −1 / +1 |
+| `Y` | Slip |
+| `V` | Vinyl / CDJ jog |
+| `F` | Cycle Color FX |
+| `B` / `N` | Beat FX on/off / cycle type |
+| `←` / `→` | Seek 1 second |
+| `[` / `]` | Pitch bend (hold) |
+| `M` | Master tempo |
+| `S` | Sync to master |
+| `G` | Make this deck the master |
+
+Double-click a fader, knob, or the tempo slider to reset it.
 
 ## MIDI
 
-Enable in the MIDI panel (browser permission). Generic map, not Pioneer:
+**SETTINGS → Enable** (browser permission). Default map:
 
 - Channel 1 = deck 1, channel 2 = deck 2, channel 16 = mixer
-- Notes: C4 play, D4 cue (hold), E4/F4/F#4 hot cues, G4 sync, A4 headphones, B4 slip, C5 vinyl, D5–F#5 loop, G5 quantize, A5 master tempo, B5 master deck, C2 jog touch, F2/G2/A2/B2 beat jump −4/−1/+1/+4
+- Notes: C4 play, D4 cue, E4/F4/F♯4 hot cues, G4 sync, A4 headphones, B4 slip, C5 vinyl, D5–F♯5 loop, G5 quantize, A5 master tempo, B5 master deck, C3 jog touch, F2/G2/A2/B2 beat jump −4/−1/+1/+4
 - CC: 1 tempo, 7 fader, 8 trim, 14 jog (relative, 64 = stop), 16–18 EQ, 19 color
 - Mixer (ch 16): CC 7 master, 10 crossfader, 1 cue mix, 11 phones, 91 Beat FX level; C4 record, D4 Beat FX
 
-Learn assigns the next note or CC to the selected control. Generic map restores the defaults. Bindings persist in IndexedDB.
+**Learn** binds the next note or CC to the selected control. **Generic map** restores defaults. Bindings persist in IndexedDB.
 
-Double-click mixer faders/knobs or the tempo slider to reset.
+## Architecture
+
+```
+UI (Vue)  →  DJCommand  →  CommandBus  →  AudioEngine / DeckEngine / MixerEngine
+                                              ↑
+                                    AudioContext.currentTime
+```
+
+- Two `DeckEngine` instances share one implementation.
+- Tempo is `playbackRate` (speed and pitch together). **MT** keeps pitch with a granular overlap-add worklet.
+- **SYNC** matches a slave’s effective BPM and beat phase to the master by changing tempo — it never seeks the slave.
+- Analysis (peaks, BPM, grid) is worker-only and cached by file identity. Audio blobs are not stored.
+- Display mode and waveform zoom live in `view.store.ts` and are never read by the engines.
+
+Deeper behaviour (cue, slip, vinyl, FX routing) is in [TUTORIAL.md](TUTORIAL.md).
+
+## Scripts
+
+```bash
+npm run dev          # Vite
+npm run typecheck
+npm run test         # Vitest
+npm run test:e2e     # Playwright
+npm run lint
+npm run build
+```
